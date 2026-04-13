@@ -33,9 +33,6 @@ public class PoseDataService {
                         .session(session)
                         .timestampSec(dto.getTimestampSec())
                         .jointCoordinates(dto.getJointCoordinates())
-                        .syncRate(dto.getSyncRate())
-                        .isCorrect(dto.getIsCorrect())
-                        .feedbackMessage(dto.getFeedbackMessage())
                         .build())
                 .collect(Collectors.toList());
 

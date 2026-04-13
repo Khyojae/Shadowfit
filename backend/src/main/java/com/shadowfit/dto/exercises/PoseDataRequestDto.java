@@ -21,12 +21,5 @@ public class PoseDataRequestDto {
     @Schema(description = "관절 좌표 (JSON 문자열)", example = "{\"nose\": [0.5, 0.5] ...}")
     private String jointCoordinates;
 
-    @Schema(description = "정답 영상과의 일치율", example = "88.5")
-    private Double syncRate;
 
-    @Schema(description = "자세 정답 여부")
-    private Boolean isCorrect;
-
-    @Schema(description = "피드백 메시지", example = "허리를 더 펴주세요")
-    private String feedbackMessage;
 }

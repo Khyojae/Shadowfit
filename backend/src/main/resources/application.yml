@@ -76,8 +76,15 @@ ai-server:
   url: http://shadowfit-ai:8000
 
 grpc:
+  # 클라이언트 설정 (스프링 -> FastAPI 호출용)
+  client:
+    fastapi-client: # 코드에서 사용할 이름
+      address: 'static://shadowfit-ai:50051' # FastAPI의 gRPC 포트로 연결 (보통 50051)
+      negotiation-type: plaintext
+      enable-keep-alive: true
+      keep-alive-without-calls: true
+
+  # (선택) 만약 스프링도 누군가의 gRPC 호출을 받는다면 유지
   server:
     port: 6565
-    address: 0.0.0.0 # 도커 내부에서 외부 호출을 받으려면 필수
-    # reflection 설정을 켜두면 Postman 같은 툴로 gRPC 테스트하기 편합니다.
     reflection-enabled: true

@@ -1,6 +1,6 @@
 plugins {
 	id 'java'
-	id 'org.springframework.boot' version '4.0.5'
+	id 'org.springframework.boot' version '3.4.0'
 	id 'io.spring.dependency-management' version '1.1.7'
 	id 'com.google.protobuf' version '0.9.4'
 }
@@ -91,8 +91,8 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-webflux'
 
 //gRPC 스프링 부트 스타터 추가
-	implementation 'io.github.lognet:grpc-spring-boot-starter:5.1.5'
-	implementation 'net.devh:grpc-server-spring-boot-starter:2.15.0.RELEASE'
+	implementation 'net.devh:grpc-client-spring-boot-starter:3.1.0.RELEASE' // 클라이언트용
+	implementation 'net.devh:grpc-server-spring-boot-starter:3.1.0.RELEASE' // 서버용
 	// Protobuf 관련 의존성
 	implementation 'io.grpc:grpc-netty-shaded:1.62.2'
 	implementation 'io.grpc:grpc-protobuf:1.62.2'
@@ -111,11 +111,22 @@ protobuf {
 	}
 	generateProtoTasks {
 		all()*.plugins {
+			// 이 중괄호 안에 아무것도 없어도 이 블록 자체가 'grpc' 파일을 만들라고 명령하는 겁니다.
 			grpc {}
 		}
 	}
 }
 
-tasks.named('test') {
-	useJUnitPlatform()
+sourceSets {
+	main {
+		java {
+			// 하드코딩된 문자열 대신, generateProto 태스크가 만든 결과물 경로를 직접 참조합니다.
+			srcDirs 'src/main/java'
+			srcDirs 'build/generated/source/proto/main/java'
+			srcDirs 'build/generated/source/proto/main/grpc'
+		}
+	}
 }
+	tasks.named('test') {
+		useJUnitPlatform()
+	}

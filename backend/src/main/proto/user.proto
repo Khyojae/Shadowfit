@@ -1,24 +1,17 @@
 syntax = "proto3";
 
 option java_multiple_files = true;
-option java_package = "com.shadowfit.global.grpc";
+option java_package = "com.shadowfit.grpc"; // 패키지는 하나로 통일하는 게 관리하기 편해요
 option java_outer_classname = "UserProto";
 
-package user;
-
-// 서비스 정의
 service UserService {
   rpc GetUserInfo (UserRequest) returns (UserResponse);
 }
 
-// 요청 메시지
 message UserRequest {
-  int64 userId = 1;
+  int64 user_id = 1;
 }
 
-// 응답 메시지
 message UserResponse {
-  int64 userId = 1;
-  string nickname = 2;
-  string email = 3;
+  string nickname = 1;
 }
