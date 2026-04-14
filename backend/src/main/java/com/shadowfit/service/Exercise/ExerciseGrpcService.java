@@ -18,14 +18,17 @@ public class ExerciseGrpcService extends ExerciseServiceGrpc.ExerciseServiceImpl
     public void savePoseDataBatch(PoseDataBatchRequest request, StreamObserver<PoseDataResponse> responseObserver) {
         try {
             poseDataService.savePoseDataBatchGrpc(request);
+
             PoseDataRequest lastData = request.getPoseData(request.getPoseDataCount() - 1);
             PoseDataResponse response = PoseDataResponse.newBuilder().setSuccess(true).
                     setSessionId(request.getSessionId())
                     .setTimestampSec(lastData.getTimestampSec())
                     .setJointCoordinates(lastData.getJointCoordinates())
             .build();
+
             responseObserver.onNext(response);
             responseObserver.onCompleted();
+
         } catch (Exception e) {
             responseObserver.onError(e);
         }

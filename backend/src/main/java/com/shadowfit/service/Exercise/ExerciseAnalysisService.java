@@ -34,12 +34,51 @@ public class ExerciseAnalysisService {
     private final SessionRepository sessionRepository;
     private final ExercisesRepository exercisesRepository;
     private final MemberRepository memberRepository;
+    private final SessionService sessionService;
 
     @Value("${internal.api.token}")
     private String internalToken;
 
     @GrpcClient("fastapi-client")
     private ExerciseServiceGrpc.ExerciseServiceStub exerciseAsyncStub;
+
+    @Transactional
+    public Long startAnalysis(VideoRequestDto appDto, Long currentMemberId) {
+        // 1. 세션 생성 로직은 그대로 유지 (DB 저장 등)
+        Session savedSession = sessionService.createSession(appDto, currentMemberId);
+        Long sessionId = savedSession.getId();
+
+        // 2. gRPC 요청 객체 생성 (FastApiRequestDto 대신 Proto 메시지 사용)
+        AnalyzeRequest request = AnalyzeRequest.newBuilder()
+                .setExerciseId(appDto.getExerciseId())
+                .setYoutubeId(YoutubeValidator.extractId(appDto.getReferenceSource()))
+                .setSessionId(sessionId)
+                .build();
+
+        // 비동기 호출 (StreamObserver 활용)
+        exerciseAsyncStub.startAnalysis(request, new StreamObserver<AnalyzeResponse>() {
+            @Override
+            public void onNext(AnalyzeResponse value) {
+                // FastAPI가 분석 시작 응답을 보냈을 때
+                log.info("FastAPI 분석 시작 응답 성공: {}", sessionId);
+            }
+
+            @Override
+            public void onError(Throwable t) {
+                // 통신 에러 발생 시 (FastAPI가 꺼져있거나 등등)
+                log.error("gRPC 통신 장애: {}", t.getMessage());
+            }
+
+            @Override
+            public void onCompleted() {
+                // 완료
+            }
+        });
+
+        return sessionId; // 요청만 던지고 즉시 세션 ID 반환!
+    }
+
+
 
     @Transactional
     public Long sendToAnalysisServer(VideoRequestDto appDto,Long currentMemberId){
@@ -82,58 +121,4 @@ public class ExerciseAnalysisService {
         return sessionId;
     }
 
-    @Transactional
-    public Long startAnalysis(VideoRequestDto appDto, Long currentMemberId) {
-        // 1. 세션 생성 로직은 그대로 유지 (DB 저장 등)
-        Session savedSession = createSession(appDto, currentMemberId);
-        Long sessionId = savedSession.getId();
-
-        // 2. gRPC 요청 객체 생성 (FastApiRequestDto 대신 Proto 메시지 사용)
-        AnalyzeRequest request = AnalyzeRequest.newBuilder()
-                .setExerciseId(appDto.getExerciseId())
-                .setYoutubeId(YoutubeValidator.extractId(appDto.getReferenceSource()))
-                .setSessionId(sessionId)
-                .build();
-
-        // 비동기 호출 (StreamObserver 활용)
-        exerciseAsyncStub.startAnalysis(request, new StreamObserver<AnalyzeResponse>() {
-            @Override
-            public void onNext(AnalyzeResponse value) {
-                // FastAPI가 분석 시작 응답을 보냈을 때
-                log.info("FastAPI 분석 시작 응답 성공: {}", sessionId);
-            }
-
-            @Override
-            public void onError(Throwable t) {
-                // 통신 에러 발생 시 (FastAPI가 꺼져있거나 등등)
-                log.error("gRPC 통신 장애: {}", t.getMessage());
-            }
-
-            @Override
-            public void onCompleted() {
-                // 완료
-            }
-        });
-
-        return sessionId; // 요청만 던지고 즉시 세션 ID 반환!
-    }
-
-
-    private Session createSession(VideoRequestDto appDto, Long currentMemberId) {
-        Member member = memberRepository.findById(currentMemberId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
-
-        Exercise exercise = exercisesRepository.findById(appDto.getExerciseId())
-                .orElseThrow(() -> new BusinessException(ErrorCode.EXERCISE_NOT_FOUND));
-
-        Session session = Session.builder()
-                .user(member)
-                .exercise(exercise)
-                .referenceSource(appDto.getReferenceSource())
-                .startTime(LocalDateTime.now())
-                .status(Status.IN_PROGRESS)
-                .build();
-
-        return sessionRepository.save(session);
-    }
 }

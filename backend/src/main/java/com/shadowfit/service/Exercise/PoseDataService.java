@@ -7,6 +7,7 @@ import com.shadowfit.model.exercise.Session;
 import com.shadowfit.repository.PoseDataRepository;
 import com.shadowfit.repository.SessionRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -41,8 +42,9 @@ public class PoseDataService {
         poseDataRepository.saveAll(entities);
     }
 
+    @Async
     @Transactional
-    public void savePoseDataBatchGrpc(PoseDataBatchRequest request) {
+    public void savePoseDataBatchGrpc( PoseDataBatchRequest request) {
         if (request.getPoseDataCount() == 0) return;
 
         // 1. 세션 조회
