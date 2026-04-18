@@ -47,7 +47,8 @@ public class ExerciseAnalysisService {
     private ExerciseServiceGrpc.ExerciseServiceStub exerciseAsyncStub;
 
     /**
-     * ✅ 기준 좌표 추출 (FastAPI gRPC 호출)
+     * [STEP 1: 기준 데이터 등록]
+     * 사용자가 선택한 유튜브 URL에서 AI가 스켈레톤 좌표를 추출하도록 요청합니다.
      */
     public void extractReferencePoses(Long exerciseId, String youtubeUrl) {
         com.shadowfit.grpc.ExtractRequest request = com.shadowfit.grpc.ExtractRequest.newBuilder()
@@ -74,7 +75,8 @@ public class ExerciseAnalysisService {
     }
 
     /**
-     * ✅ 운동 분석 시작 (핵심 로직)
+     * [STEP 2: 운동 분석 시작 - Entry Point]
+     * 앱의 요청을 받아 DB에 세션을 생성하고 즉시 세션 ID를 반환합니다. (응답 속도 최적화)
      */
     @Transactional
     public Long startAnalysis(VideoRequestDto appDto, Long currentMemberId) {
@@ -88,7 +90,8 @@ public class ExerciseAnalysisService {
     }
 
     /**
-     * ✅ 비동기 FastAPI 전송 로직
+     * [STEP 3: 비동기 gRPC 데이터 전송]
+     * DB에서 기준 좌표(Reference)를 조회하여 FastAPI 서버로 전송합니다.
      */
     @Async
     @Transactional(readOnly = true)
@@ -126,7 +129,8 @@ public class ExerciseAnalysisService {
     }
 
     /**
-     * ✅ AI 서버에 분석 중단 명령 전송
+     * [STEP 4: 사용자 강제 중단]
+     * 사용자가 앱에서 종료를 눌렀을 때 AI 서버의 연산 스레드를 중단시키기 위한 신호를 보냅니다.
      */
     public void stopAnalysis(Long sessionId) {
         log.info("AI 서버 분석 중단 요청 전송 - sessionId: {}", sessionId);
@@ -150,7 +154,8 @@ public class ExerciseAnalysisService {
     }
 
     /**
-     * ✅ 운동 세션 종료 로직 (DB 업데이트)
+     * [STEP 5: 분석 결과 영속화 (Callback)]
+     * AI 서버가 분석을 마치고 gRPC로 보고해온 최종 결과를 DB에 반영합니다.
      */
     @Transactional
     public void completeSession(Long sessionId, SessionUpdateRequestDto dto) {
@@ -166,26 +171,4 @@ public class ExerciseAnalysisService {
         log.info("세션 {} DB 업데이트 완료", sessionId);
     }
 
-    /**
-     * ✅ 구버전 WebClient 방식 (필요 시 사용)
-     */
-    @Transactional
-    public Long sendToAnalysisServer(VideoRequestDto appDto, Long currentMemberId) {
-        Member member = memberRepository.findById(currentMemberId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
-
-        Exercise exercise = exercisesRepository.findById(appDto.getExerciseId())
-                .orElseThrow(() -> new BusinessException(ErrorCode.EXERCISE_NOT_FOUND));
-
-        Session session = Session.builder()
-                .user(member)
-                .exercise(exercise)
-                .referenceSource(appDto.getReferenceSource())
-                .startTime(LocalDateTime.now())
-                .status(Status.IN_PROGRESS)
-                .build();
-
-        Session savedSession = sessionRepository.save(session);
-        return savedSession.getId();
-    }
 }

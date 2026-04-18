@@ -5,6 +5,7 @@ import com.shadowfit.dto.exercises.VideoRequestDto;
 import com.shadowfit.global.security.auth.CustomUserDetails;
 import com.shadowfit.model.exercise.Status;
 import com.shadowfit.service.Exercise.ExerciseAnalysisService;
+import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,6 +30,7 @@ public class ExercisesController {
      * ✅ 운동 세션 시작 (핵심 API)
      * App → Spring → gRPC → FastAPI 흐름 시작점
      */
+    @Operation(summary="운동 세션 시작",description = "운동을 시작할 수 있음/ ai서버에서 특정 조건을 달성하면 운동 종료가됨")
     @PostMapping("/sessions")
     public ResponseEntity<ExercisesResponseDto> startAnalysis(
             @RequestBody VideoRequestDto dto,
@@ -56,6 +58,7 @@ public class ExercisesController {
     /**
      * ✅ 기준 좌표 추출 (관리자/등록용)
      */
+    @Operation(summary="기준 좌표 추출",description = "기준 좌표 추출 요청을 할 수 있음")
     @PostMapping("/{exerciseId}/reference")
     public ResponseEntity<String> extractReference(
             @PathVariable Long exerciseId,
@@ -73,6 +76,7 @@ public class ExercisesController {
      * ✅ 운동 세션 종료 및 결과 저장
      * App에서 측정한 최종 데이터를 받아 DB를 업데이트함
      */
+    @Operation(summary="운동 세션 종료 요청",description = "프론트에서 운동 종료를 누르면 종료가됨")
     @PutMapping("/sessions/{sessionId}/complete")
     public ResponseEntity<SessionUpdateResponseDto> completeSession(
             @PathVariable Long sessionId,
