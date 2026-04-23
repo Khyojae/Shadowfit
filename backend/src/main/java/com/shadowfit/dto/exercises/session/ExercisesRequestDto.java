@@ -1,4 +1,4 @@
-package com.shadowfit.dto.exercises;
+package com.shadowfit.dto.exercises.session;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;

@@ -29,6 +29,10 @@ public class PoseDataService {
     private final ExercisesRepository exercisesRepository;
     private final ExerciseReferenceRepository referenceRepository;
 
+    /**
+     * [HTTP 방식] 포즈 데이터 배치 저장
+     * WebClient 등을 통해 리스트 형태로 넘어온 좌표 데이터를 한꺼번에 저장합니다.
+     */
     @Transactional
     public void savePoseDataBatch(List<PoseDataRequestDto> dtos) {
         if (dtos.isEmpty()) return;
@@ -51,6 +55,10 @@ public class PoseDataService {
         poseDataRepository.saveAll(entities);
     }
 
+    /**
+     * [gRPC 방식] 기준 좌표(Reference) 저장
+     * AI 서버가 추출한 운동 종목별 '정석 포즈' 좌표들을 DB에 저장합니다.
+     */
     @Transactional
     public void saveReferencePoses(Long exerciseId, List<PoseDataRequest> poseDataList) {
         // 1. 해당 운동이 존재하는지 확인
@@ -73,6 +81,11 @@ public class PoseDataService {
         referenceRepository.saveAll(entities);
     }
 
+    /**
+     * [gRPC 방식] 실시간 분석 좌표 배치 저장
+     * AI 서버에서 주기적으로 쏴주는 분석 좌표들을 비동기(@Async)로 처리하여
+     * 메인 통신 흐름에 지장을 주지 않고 DB에 저장합니다.
+     */
     @Async
     @Transactional
     public void savePoseDataBatchGrpc( PoseDataBatchRequest request) {

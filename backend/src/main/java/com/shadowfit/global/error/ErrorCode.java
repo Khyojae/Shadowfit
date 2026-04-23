@@ -46,7 +46,10 @@ public enum ErrorCode {
     // --- Infrastructure & Cache  ---
     REDIS_CONNECTION_FAILURE(500, "I001", "캐시 서버 연결에 실패했습니다."),
     API_RESPONSE_TIMEOUT(504, "I002", "API 응답 시간이 초과되었습니다. (Threshold: 500ms)"),
-    DATABASE_LOCK_FAILURE(500, "I003", "데이터베이스 트랜잭션 처리 중 오류가 발생했습니다.");
+    DATABASE_LOCK_FAILURE(500, "I003", "데이터베이스 트랜잭션 처리 중 오류가 발생했습니다."),
+
+    //Report
+    REPORT_NOT_FOUND(404,"R001","리포트를 찾을 수 없습니다");
 
     private final int status;
     private final String code;

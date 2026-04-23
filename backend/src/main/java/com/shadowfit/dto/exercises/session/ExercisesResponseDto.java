@@ -1,4 +1,4 @@
-package com.shadowfit.dto.exercises;
+package com.shadowfit.dto.exercises.session;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.shadowfit.model.exercise.Status;

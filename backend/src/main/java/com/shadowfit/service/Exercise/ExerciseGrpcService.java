@@ -16,6 +16,10 @@ public class ExerciseGrpcService extends ExerciseServiceGrpc.ExerciseServiceImpl
     private final PoseDataService poseDataService;
     private final SessionService sessionService;
 
+    /**
+     * [AI -> Spring] 운동 분석 중 생성된 포즈 데이터들을 배치(Batch)로 저장합니다.
+     * 분석 도중 발생하는 방대한 좌표 데이터를 효율적으로 DB에 기록합니다.
+     */
     @Override
     public void savePoseDataBatch(PoseDataBatchRequest request, StreamObserver<PoseDataResponse> responseObserver) {
         try {
@@ -36,7 +40,10 @@ public class ExerciseGrpcService extends ExerciseServiceGrpc.ExerciseServiceImpl
         }
     }
 
-    // ExerciseGrpcService.java에 추가할 내용
+    /**
+     * [AI -> Spring] 유튜브 영상에서 추출된 '정석 기준 좌표' 전체를 수신하여 저장합니다.
+     * 운동 종목 등록 시 AI 서버가 추출한 좌표 데이터를 DB에 영속화하는 역할을 합니다.
+     */
     @Override
     public void extractReferenceData(com.shadowfit.grpc.ExtractRequest request,
                                      io.grpc.stub.StreamObserver<com.shadowfit.grpc.ExtractResponse> responseObserver) {
@@ -62,10 +69,15 @@ public class ExerciseGrpcService extends ExerciseServiceGrpc.ExerciseServiceImpl
         }
     }
 
+    /**
+     * [AI -> Spring] 최종 분석 완료 보고 (핵심 종료 지점)
+     * AI 서버가 모든 연산을 마치고 최종 결과(횟수, 일치율 등)를 스프링에 전달할 때 호출됩니다.
+     */
     @Override
     public void completeAnalysis(com.shadowfit.grpc.SessionCompleteRequest request,
                                  io.grpc.stub.StreamObserver<com.shadowfit.grpc.SessionCompleteResponse> responseObserver) {
         try {
+            // AI 서버가 보내온 gRPC 데이터를 SessionService를 통해 DB에 반영
             sessionService.completeSession(request);
 
             SessionCompleteResponse response = SessionCompleteResponse.newBuilder()
@@ -76,12 +88,10 @@ public class ExerciseGrpcService extends ExerciseServiceGrpc.ExerciseServiceImpl
 
             responseObserver.onNext(response);
             responseObserver.onCompleted();
-            log.info("세션 분석 완료 처리 성공 - 세션 ID: {}", request.getSessionId());
+            log.info("AI 서버 gRPC에 의한 세션 종료 성공 - 세션 ID: {}", request.getSessionId());
         } catch (Exception e) {
-            log.error("세션 종료 처리 중 에러: {}", e.getMessage());
-            responseObserver.onError(io.grpc.Status.INTERNAL
-                    .withDescription(e.getMessage())
-                    .asRuntimeException());
+            log.error("세션 종료 gRPC 처리 중 에러: {}", e.getMessage());
+            responseObserver.onError(e);
         }
     }
 }
