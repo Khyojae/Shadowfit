@@ -80,6 +80,9 @@ dependencies {
 	// --- Test ---
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testImplementation 'org.springframework.security:spring-security-test'
+
+	//docker 빌드 없이 바로 수정
+	developmentOnly 'org.springframework.boot:spring-boot-devtools'
 }
 
 protobuf {

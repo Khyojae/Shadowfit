@@ -53,7 +53,7 @@ public class SessionService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.EXERCISE_NOT_FOUND));
 
         Session session = Session.builder()
-                .user(member)
+                .member(member)
                 .exercise(exercise)
                 .referenceSource(appDto.getReferenceSource())
                 .startTime(LocalDateTime.now())
@@ -95,7 +95,7 @@ public class SessionService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.EXERCISE_NOT_FOUND));
 
         Session session = Session.builder()
-                .user(member)
+                .member(member)
                 .exercise(exercise)
                 .referenceSource(appDto.getReferenceSource())
                 .startTime(LocalDateTime.now())
@@ -115,7 +115,7 @@ public class SessionService {
         LocalDate endOfWeek = today.with(java.time.DayOfWeek.SUNDAY);
 
         // 2. 이번 주 모든 세션 조회
-        List<Session> weeklySessions = sessionRepository.findByUserIdAndStartTimeBetween(
+        List<Session> weeklySessions = sessionRepository.findByMemberIdAndStartTimeBetween(
                 memberId, startOfWeek.atStartOfDay(), endOfWeek.atTime(23, 59, 59));
 
         // 3. 통계 계산 (Duration 계산 시 NPE 방어)
@@ -183,7 +183,7 @@ public class SessionService {
         LocalDate startOfMonth = LocalDate.of(year, month, 1);
         LocalDate endOfMonth = startOfMonth.with(java.time.temporal.TemporalAdjusters.lastDayOfMonth());
 
-        List<Session> monthlySessions = sessionRepository.findByUserIdAndStartTimeBetween(
+        List<Session> monthlySessions = sessionRepository.findByMemberIdAndStartTimeBetween(
                 memberId, startOfMonth.atStartOfDay(), endOfMonth.atTime(23, 59, 59));
 
         // 2. 상단 카드 데이터 계산 (평균 싱크로율)
@@ -239,7 +239,7 @@ public class SessionService {
 
         while (true) {
             // 해당 날짜에 운동 기록이 있는지 확인
-            boolean hasRecord = sessionRepository.findByUserIdAndStartTimeBetween(
+            boolean hasRecord = sessionRepository.findByMemberIdAndStartTimeBetween(
                     memberId,
                     checkDate.atStartOfDay(),
                     checkDate.atTime(23, 59, 59)

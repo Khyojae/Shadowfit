@@ -1,11 +1,12 @@
--- 1. 사용자 데이터 (비밀번호: {noop}1234)
-INSERT INTO users (user_id, email, password, nickname, sex, selected_persona, workout_level, onboarding_completed, role)
+-- 1. 사용자 데이터 (Member)
+-- 수정: user_id 삭제 -> username 사용 / height, weight (Double) 추가
+INSERT INTO users (email, password, username, nickname, sex, selected_persona, workout_level, onboarding_completed, role, height, weight)
 VALUES
-    ('user_01', 'beginner@test.com', '{noop}1234', '헬린이1', 'MALE', 'BEGINNER', 'STARTER', TRUE, 'USER'),
-    ('user_02', 'pro@test.com', '{noop}1234', '득근득근', 'FEMALE', 'ADVANCED', 'PRO', TRUE, 'USER'),
-    ('user_03', 'diet@test.com', '{noop}1234', '다이어터', 'NONE', 'DIET', 'BEGINNER', TRUE, 'USER');
+    ('beginner@test.com', '{noop}1234', 'user_01', '헬린이1', 'MALE', 'BEGINNER', 'STARTER', TRUE, 'USER', 175.5, 70.2),
+    ('pro@test.com', '{noop}1234', 'user_02', '득근득근', 'FEMALE', 'ADVANCED', 'PRO', TRUE, 'USER', 162.0, 52.5),
+    ('diet@test.com', '{noop}1234', 'user_03', '다이어터', 'NONE', 'DIET', 'BEGINNER', TRUE, 'USER', 180.0, 85.3);
 
--- 2. 운동 종목 마스터 데이터
+-- 2. 운동 종목 마스터 데이터 (동일)
 INSERT INTO exercises (name, category, description, target_joints, sync_threshold_beginner, sync_threshold_advanced)
 VALUES
     ('스쿼트', 'LOWER', '하체 운동의 꽃입니다. 무릎이 발끝을 나가지 않도록 주의하세요.',
@@ -15,35 +16,37 @@ VALUES
     ('데드리프트', 'BACK', '전신 후면 근육을 강화합니다.',
      '["left_hip", "right_hip", "left_knee", "right_knee", "left_shoulder", "right_shoulder"]', 65.0, 90.0);
 
--- 3. 운동 세션 (사용자 1이 스쿼트 완료)
--- 테이블명이 엔티티 설정에 따라 'sessions' 또는 'exercise_sessions'일 수 있으니 확인 필요!
-INSERT INTO exercise_sessions (user_id, exercise_id, start_time, end_time, total_reps, avg_sync_rate, max_sync_rate, status)
+-- 3. 운동 세션
+-- 수정: user_id -> member_id 명칭 변경 반영
+INSERT INTO exercise_sessions (member_id, exercise_id, start_time, end_time, total_reps, avg_sync_rate, max_sync_rate, status)
 VALUES
     (1, 1, '2026-04-01 09:00:00', '2026-04-01 09:15:00', 30, 78.5, 92.0, 'COMPLETED'),
     (1, 2, '2026-04-02 10:00:00', '2026-04-02 10:10:00', 20, 65.2, 80.0, 'COMPLETED');
 
--- 4. 자세 데이터 (세션 1에 대한 1~3초 예시 데이터)
--- 방금 만든 PoseData 엔티티 구조에 맞춤
+-- 4. 자세 데이터 (동일)
 INSERT INTO pose_data (session_id, timestamp_sec, joint_coordinates, sync_rate, is_correct, feedback_message)
 VALUES
-    (1, 1.0, '{"point_0": [0.5, 0.5, 0.1], "point_1": [0.52, 0.48, 0.12]}', 85.5, TRUE, '좋은 자세입니다!'),
-    (1, 2.0, '{"point_0": [0.49, 0.51, 0.1], "point_1": [0.53, 0.47, 0.11]}', 45.0, FALSE, '무릎이 너무 안쪽으로 모이고 있어요.'),
-    (1, 3.0, '{"point_0": [0.5, 0.5, 0.1], "point_1": [0.52, 0.48, 0.12]}', 90.2, TRUE, '완벽하게 교정되었습니다.');
+    (1, 1, '{"point_0": [0.5, 0.5, 0.1], "point_1": [0.52, 0.48, 0.12]}', 85.5, TRUE, '좋은 자세입니다!'),
+    (1, 2, '{"point_0": [0.49, 0.51, 0.1], "point_1": [0.53, 0.47, 0.11]}', 45.0, FALSE, '무릎이 너무 안쪽으로 모이고 있어요.'),
+    (1, 3, '{"point_0": [0.5, 0.5, 0.1], "point_1": [0.52, 0.48, 0.12]}', 90.2, TRUE, '완벽하게 교정되었습니다.');
 
 -- 5. 달력 일지
-INSERT INTO daily_logs (user_id, log_date, memo, total_exercise_time, total_calories, mood)
+-- 수정: user_id -> member_id 명칭 변경 반영
+INSERT INTO daily_logs (member_id, log_date, memo, total_exercise_time, total_calories, mood)
 VALUES
     (1, '2026-04-01', '첫 스쿼트 완료! 땀나고 좋다.', 15, 120.5, 'GREAT'),
     (1, '2026-04-02', '푸쉬업은 역시 힘들다.', 10, 85.0, 'GOOD');
 
 -- 6. 신체 변화 기록
-INSERT INTO body_records (user_id, record_date, weight, body_fat_percentage, muscle_mass)
+-- 수정: user_id -> member_id 명칭 변경 반영
+INSERT INTO body_records (member_id, record_date, weight, body_fat_percentage, muscle_mass)
 VALUES
     (1, '2026-03-01', 75.5, 22.1, 32.5),
     (1, '2026-04-01', 74.8, 21.5, 33.1);
 
--- 7. 운동 보고서 (세션 1에 대한 GPT 분석 결과 예시)
-INSERT INTO reports (user_id, session_id, report_type, summary, detailed_analysis, improvement_tips)
+-- 7. 운동 보고서
+-- 수정: user_id -> member_id 명칭 변경 반영
+INSERT INTO reports (member_id, session_id, report_type, summary, detailed_analysis, improvement_tips)
 VALUES
     (1, 1, 'SESSION', '전체적으로 안정적인 스쿼트였습니다.',
      '{"stuck_points": [12, 25], "stability_score": 8.5}', '하강 시 속도를 조금 더 늦추면 자극이 더 잘 올 것 같습니다.');

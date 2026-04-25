@@ -45,11 +45,11 @@ public class JwtUtil {
         ZonedDateTime tokenValidity = now.plusSeconds(expireTime);
 
         // 빌드 시점에 로그를 찍어 데이터가 들어오는지 확인
-        log.info("@@@ Generating Token for User: {}", member.getUserId());
+        log.info("@@@ Generating Token for User: {}", member.getEmail());
 
         return Jwts.builder()
-                .setSubject(member.getUserId()) // 필터에서 getSubject로 꺼낼 값
-                .claim("userId", member.getUserId())
+                .setSubject(member.getEmail()) // 필터에서 getSubject로 꺼낼 값
+                .claim("userId", member.getEmail())
                 .claim("role", member.getRole())
                 .setIssuedAt(Date.from(now.toInstant()))
                 .setExpiration(Date.from(tokenValidity.toInstant()))
@@ -58,7 +58,7 @@ public class JwtUtil {
     }
 
     // 문자열 userId를 반환하도록 추출 로직 변경
-    public String getUserId(String token){
+    public String getUserEmail(String token){
         return parseClaims(token).getSubject();
     }
 

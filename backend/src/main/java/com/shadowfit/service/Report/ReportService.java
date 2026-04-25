@@ -42,8 +42,8 @@ public class ReportService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.REPORT_NOT_FOUND));
 
         // 3. 이전 동일 운동 세션 조회
-        Optional<Session> lastSession = sessionRepository.findFirstByUserIdAndExerciseIdAndStatusOrderByStartTimeDesc(
-                currentSession.getUser().getId(),
+        Optional<Session> lastSession = sessionRepository.findFirstByMemberIdAndExerciseIdAndStatusOrderByStartTimeDesc(
+                currentSession.getMember().getId(),
                 currentSession.getExercise().getId(),
                 Status.COMPLETED
         );

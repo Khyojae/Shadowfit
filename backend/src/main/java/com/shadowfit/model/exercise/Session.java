@@ -14,7 +14,7 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@ToString(exclude = {"user", "exercise"}) // 무한 참조 방지
+@ToString(exclude = {"member", "exercise"}) // 무한 참조 방지
 public class Session {
 
     @Id
@@ -23,8 +23,8 @@ public class Session {
 
     // 연관관계 설정 (N:1)
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false)
-    private Member user;
+    @JoinColumn(name = "member_id", nullable = false)
+    private Member member;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "exercise_id", nullable = false)

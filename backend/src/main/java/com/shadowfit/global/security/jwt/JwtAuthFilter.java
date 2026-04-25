@@ -43,10 +43,10 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
             try {
                 if (jwtUtil.isValidToken(token) && !jwtBlacklist.isBlacklisted(token)) {
-                    String userId = jwtUtil.getUserId(token);
+                    String userEmail = jwtUtil.getUserEmail(token);
 
-                    if (userId != null) {
-                        UserDetails userDetails = customUserDetailsService.loadUserByUsername(userId);
+                    if (userEmail != null) {
+                        UserDetails userDetails = customUserDetailsService.loadUserByUsername(userEmail);
 
                         if (userDetails != null) {
                             UsernamePasswordAuthenticationToken auth =
@@ -57,10 +57,10 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                                     );
                             SecurityContextHolder.getContext().setAuthentication(auth);
                             // [로그 2] 인증 성공 확인
-                            log.info("인증 성공: user_id = {}", userId);
+                            log.info("인증 성공: email = {}", userEmail);
                         }
                     } else {
-                        log.warn("토큰에서 userId 추출 실패");
+                        log.warn("토큰의 Subject(Email)가 비어있습니다.");
                     }
                 } else {
                     log.warn("유효하지 않은 토큰이거나 블랙리스트에 등록된 토큰입니다.");

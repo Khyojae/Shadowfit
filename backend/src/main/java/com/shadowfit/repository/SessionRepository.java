@@ -18,9 +18,8 @@ public interface SessionRepository extends JpaRepository<Session,Long> {
 
     // [중요] 이전 기록과 비교하기 위해 바로 직전 세션 기록 가져오기
     // "저번보다 싱크로율이 5% 올랐어요!" 기능을 위해 필요합니다.
-    Optional<Session> findFirstByUserIdAndExerciseIdAndStatusOrderByStartTimeDesc(
-            Long userId, Long exerciseId, Status status
+    Optional<Session> findFirstByMemberIdAndExerciseIdAndStatusOrderByStartTimeDesc(
+            Long memberId, Long exerciseId, Status status
     );
 
-    List<Session> findByUserIdAndStartTimeBetween(Long userId, LocalDateTime start, LocalDateTime end);
-}
+    List<Session> findByMemberIdAndStartTimeBetween(Long memberId, LocalDateTime start, LocalDateTime end);}

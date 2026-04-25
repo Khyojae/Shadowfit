@@ -5,7 +5,7 @@ import com.shadowfit.dto.report.record.DailyLogRequestDto;
 import com.shadowfit.dto.report.record.WeeklyActivityResponseDto;
 import com.shadowfit.global.security.auth.CustomUserDetails;
 import com.shadowfit.service.Exercise.SessionService;
-import com.shadowfit.service.Report.DailyLogServcie;
+import com.shadowfit.service.Report.DailyLogService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -22,7 +22,7 @@ import org.springframework.web.bind.annotation.*;
 @Slf4j
 public class ExerciseRecordController {
     private final SessionService sessionService;
-    private final DailyLogServcie dailyLogService;
+    private final DailyLogService dailyLogService;
 
     @Operation(summary="주간 운동 요약",description = "주간 운동 기록 열람 가능")
     @GetMapping("/weekly-summary")

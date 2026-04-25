@@ -14,9 +14,9 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @Schema(description = "회원가입 req dto")
 public class MemberRequestDto {
-    @Schema(description = "ID", requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(description = "사용자 아이디 (화면 표시용 고유 식별자)", example = "shadow_fit_01", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotBlank(message="ID는 필수 입력 값입니다.")
-    private String userId;  // 화면 내 아이디 표시
+    private String username;  // 화면 내 아이디 표시
 
     @Schema(description = "Email", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotBlank(message="Email는 필수 입력 값입니다.")
@@ -31,4 +31,5 @@ public class MemberRequestDto {
 
     @Schema(description = "사용자 권한", example = "USER",requiredMode = Schema.RequiredMode.REQUIRED)
     private UserRole role;
+
 }

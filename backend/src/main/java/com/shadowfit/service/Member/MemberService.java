@@ -27,7 +27,7 @@ public class MemberService{
     //로그인 로직
     @Transactional
     public LoginResponseDto login(LoginRequestDto dto){
-        Member member = memberRepository.findByUserId(dto.getUserId()).
+        Member member = memberRepository.findByEmail(dto.getEmail()).
                 orElseThrow(()-> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         if(!passwordEncoder.matches(dto.getPassword(), member.getPassword())){
@@ -35,7 +35,7 @@ public class MemberService{
         }
 
         CustomUserInfoDto info = CustomUserInfoDto.builder()
-                .userId(member.getUserId())
+                .email(member.getEmail())
                 .role(member.getRole())
                 .build();
 
@@ -44,7 +44,7 @@ public class MemberService{
         UserRole role = member.getRole();
 
         RefreshToken refreshTokenEntity= RefreshToken.builder()
-                .userId(member.getUserId())
+                .memberId(member.getId())
                 .token(refreshToken)
                 .build();
         refreshTokenRepository.save(refreshTokenEntity);
@@ -66,26 +66,26 @@ public class MemberService{
     //회원가입 로직
     @Transactional
     public String signup(MemberRequestDto dto) {
-        if(memberRepository.existsByUserId((dto.getUserId()))) {
+        if(memberRepository.existsByEmail((dto.getEmail()))) {
             throw new BusinessException(ErrorCode.USERID_DUPLICATION);
         }
         String encodedPassword = passwordEncoder.encode(dto.getPassword());
         Member member = Member.builder()
-                .userId(dto.getUserId())
+                .username(dto.getUsername())
                 .email(dto.getEmail())
                 .password(encodedPassword)
                 .role(dto.getRole())
                 .build();
         memberRepository.save(member);
-        return member.getUserId();
+        return member.getUsername();
     }
 
     //회원탈퇴 로직
     @Transactional
-    public void deleteAccount(String userId){
-        Member member = memberRepository.findByUserId(userId)
+    public void deleteAccount(String email){
+        Member member = memberRepository.findByEmail(email)
                 .orElseThrow(()-> new BusinessException(ErrorCode.USER_NOT_FOUND));
         memberRepository.delete(member);
-        refreshTokenRepository.deleteByUserId(userId);
+        refreshTokenRepository.deleteByMemberId(member.getId());
     }
 }

@@ -10,17 +10,19 @@ import jakarta.persistence.Id;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
+@ToString(exclude = "exercise") // 연관관계 제외 추가
 public class ExerciseReference {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "exercise_id")
+    @JoinColumn(name = "exercise_id", nullable = false) // 필수값 설정
     private Exercise exercise;
 
+    @Column(name = "timestamp_sec", nullable = false)
     private Double timestampSec;
 
-    @Column(columnDefinition = "TEXT") // JSON이지만 편의상 TEXT로 매핑 가능
+    @Column(name = "joint_coordinates", columnDefinition = "json", nullable = false)
     private String jointCoordinates;
 }

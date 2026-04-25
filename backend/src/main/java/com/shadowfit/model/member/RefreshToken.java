@@ -12,8 +12,8 @@ import lombok.*;
 @Builder
 public class RefreshToken {
     @Id
-    @Column(name = "user_id", nullable = false)
-    private String userId;
+    @Column(name = "member_id", nullable = false)
+    private Long memberId;
 
     @Column(name = "token", nullable = false, length = 512)
     private String token;

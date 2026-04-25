@@ -49,24 +49,24 @@ public class MemberController {
     }
 
     @Operation(summary="회원탈퇴", description = "회원탈퇴를 할 수 있음")
-    @DeleteMapping("/{userId}")
-    public ResponseEntity<Void> deleteMember(@PathVariable("userId") String userId){
-        memberService.deleteAccount(userId);
+    @DeleteMapping("/{email}")
+    public ResponseEntity<Void> deleteMember(@PathVariable("email") String email){
+        memberService.deleteAccount(email);
         return ResponseEntity.noContent().build();
     }
 
     @Operation(summary="회원정보조회", description = "온보딩정보를 열람 할 수 있음")
-    @GetMapping("/onboarding/{userId}")
-    public ResponseEntity<OnboardingDto> getOnboarding(@PathVariable("userId") String userId){
-        OnboardingDto response = onboardingService.readOnboarding(userId);
+    @GetMapping("/onboarding/{email}")
+    public ResponseEntity<OnboardingDto> getOnboarding(@PathVariable("email") String email){
+        OnboardingDto response = onboardingService.readOnboarding(email);
         return ResponseEntity.ok(response);
     }
 
     @Operation(summary="온보딩 단계별 저장", description = "온보딩을 수정할 수 있음")
-    @PatchMapping("/onboarding/{userId}")
-    public ResponseEntity<OnboardingDto> updateOnboarding(@PathVariable("userId") String userId,
+    @PatchMapping("/onboarding/{email}")
+    public ResponseEntity<OnboardingDto> updateOnboarding(@PathVariable("email") String email,
                                                           @RequestBody OnboardingRequestDto dto){
-        OnboardingDto response = onboardingService.updateOnboarding(userId,dto);
+        OnboardingDto response = onboardingService.updateOnboarding(email,dto);
         return ResponseEntity.ok(response);
 
     }

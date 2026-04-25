@@ -18,8 +18,8 @@ public class OnboardingService {
 
     //온보딩 업데이트
     @Transactional
-    public OnboardingDto updateOnboarding(String userId, OnboardingRequestDto dto){
-        Member member = memberRepository.findByUserId(userId)
+    public OnboardingDto updateOnboarding(String email, OnboardingRequestDto dto){
+        Member member = memberRepository.findByEmail(email)
                 .orElseThrow(()->new BusinessException(ErrorCode.USER_NOT_FOUND));
         member.updateOnboarding(dto);
 
@@ -34,8 +34,8 @@ public class OnboardingService {
 
     //온보딩 업데이트
     @Transactional(readOnly = true)
-    public OnboardingDto readOnboarding(String userId){
-        Member member = memberRepository.findByUserId(userId)
+    public OnboardingDto readOnboarding(String email){
+        Member member = memberRepository.findByEmail(email)
                 .orElseThrow(()->new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         return OnboardingDto.fromEntity(member);

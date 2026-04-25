@@ -18,7 +18,7 @@ import java.time.LocalDate;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class DailyLogServcie {
+public class DailyLogService {
     private final DailyLogRepository dailyLogRepository;
     private final MemberRepository memberRepository;
 
@@ -27,7 +27,7 @@ public class DailyLogServcie {
         log.info("일지 저장 요청 - 사용자: {}, 날짜: {}", memberId, dto.getLogDate());
 
         //1. 일지 조회
-        DailyLog dailyLog = dailyLogRepository.findByUserIdAndLogDate(memberId,dto.getLogDate())
+        DailyLog dailyLog = dailyLogRepository.findByMemberIdAndLogDate(memberId,dto.getLogDate())
                 .map(existingLog->{
                     existingLog.setMemo(dto.getMemo());
                     existingLog.setMood(dto.getMood());
@@ -39,7 +39,7 @@ public class DailyLogServcie {
                             .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
                     return DailyLog.builder()
-                            .user(member)
+                            .member(member)
                             .logDate(dto.getLogDate())
                             .memo(dto.getMemo())
                             .mood(dto.getMood())
@@ -49,7 +49,7 @@ public class DailyLogServcie {
     }
     @Transactional(readOnly = true)
     public DailyLogResponseDto getDailyLog(Long memberId, LocalDate date) {
-        DailyLog log = dailyLogRepository.findByUserIdAndLogDate(memberId, date)
+        DailyLog log = dailyLogRepository.findByMemberIdAndLogDate(memberId, date)
                 .orElseThrow(() -> new BusinessException(ErrorCode.REPORT_NOT_FOUND));
 
         // 엔티티를 응답 DTO로 변환하여 반환

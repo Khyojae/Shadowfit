@@ -13,27 +13,32 @@ import lombok.*;
 @NoArgsConstructor
 @Schema(description = "온보딩 멤버 정보 조회 res dto")
 public class OnboardingDto {
-    @Schema(description = "ID", requiredMode = Schema.RequiredMode.REQUIRED)
-    private String userId;
+    @Schema(description = "시스템 고유 번호 (PK)", example = "1", requiredMode = Schema.RequiredMode.REQUIRED)
+    private Long id;
 
-    @Schema(description = "페르소나 조회", requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(description = "사용자 계정 아이디 (표시용)", example = "shadow_runner", requiredMode = Schema.RequiredMode.REQUIRED)
+    private String username;
+
+    @Schema(description = "선택한 운동 페르소나", example = "DIET", requiredMode = Schema.RequiredMode.REQUIRED)
     private SelectedPersona selectedPersona;
 
-    @Schema(description = "운동 수준 조회", requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(description = "현재 운동 숙련도", example = "BEGINNER", requiredMode = Schema.RequiredMode.REQUIRED)
     private WorkoutLevel workoutLevel;
 
-    @Schema(description = "키 조회", requiredMode = Schema.RequiredMode.REQUIRED)
-    private String height;
+    @Schema(description = "신장 (cm)", example = "178.5", requiredMode = Schema.RequiredMode.REQUIRED)
+    private Double height;
 
-    @Schema(description = "몸무게 조회", requiredMode = Schema.RequiredMode.REQUIRED)
-    private String weight;
+    @Schema(description = "체중 (kg)", example = "72.3", requiredMode = Schema.RequiredMode.REQUIRED)
+    private Double weight;
 
     public static OnboardingDto fromEntity(Member member){
         return OnboardingDto.builder()
-                .userId(member.getUserId())
+                .id(member.getId())
+                .username(member.getUsername())
                 .selectedPersona(member.getSelectedPersona())
                 .workoutLevel(member.getWorkoutLevel())
                 .height(member.getHeight())
-                .weight(member.getWeight()).build();
+                .weight(member.getWeight())
+                .build();
     }
 }

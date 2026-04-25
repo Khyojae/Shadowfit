@@ -18,8 +18,8 @@ public class Member {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "user_id", nullable = false, length = 50)
-    private String userId; // 로그인용 아이디 (String)
+    @Column(name = "username", nullable = false, unique = true, length = 50)
+    private String username;
 
     @Column(nullable = false, unique = true, length = 100)
     private String email;
@@ -46,11 +46,11 @@ public class Member {
 
     // --- 온보딩 관련 데이터 추가 ---
 
-    @Column(length = 10)
-    private String height; // 키
+    @Column(columnDefinition = "DECIMAL(5,1)")
+    private Double height;
 
-    @Column(length = 10)
-    private String weight; // 몸무게
+    @Column(columnDefinition = "DECIMAL(5,1)")
+    private Double weight;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "workout_level")
