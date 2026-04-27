@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   Image,
+  Alert,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Slider from '@react-native-community/slider';
@@ -13,9 +14,15 @@ import { useRouter } from 'expo-router';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { COLORS, FONT_SIZE, SPACING, RADIUS } from '@/constants/Colors';
 import Button from '@/components/ui/Button';
-import type { ExerciseLevel, PersonaType, OnboardingData } from '@/types/user';
+import type {
+  WorkoutLevel,
+  SelectedPersona,
+  OnboardingData,
+} from '@/types/user';
+import { memberService } from '@/services/memberService';
+import { useAuthStore } from '@/stores/authStore';
 
-const TOTAL_STEPS = 4;
+const TOTAL_STEPS = 5;
 
 // ─── 기준 영상 데이터 ────────────────────────────────
 interface ReferenceVideo {
@@ -131,30 +138,84 @@ const EXERCISE_VIDEOS: ExerciseCategory[] = [
 export default function OnboardingScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const userEmail = useAuthStore((s) => s.user?.email);
+  const markOnboardingCompleted = useAuthStore((s) => s.markOnboardingCompleted);
   const [step, setStep] = useState(0);
+  const [submitting, setSubmitting] = useState(false);
+  // 백엔드 OnboardingRequestDto 와 키 이름 일치
   const [data, setData] = useState<OnboardingData>({
-    exerciseLevel: null,
-    targetWeight: 70,
+    workoutLevel: null,
+    height: 170,
+    weight: 70,
     persona: null,
-    selectedVideoId: null,
+    preferredUrl: null,
   });
+
+  // 마이페이지에서 수정 진입한 경우 기존 데이터로 초기값 채움
+  useEffect(() => {
+    if (!userEmail) return;
+    memberService
+      .getOnboarding(userEmail)
+      .then((res) => {
+        const existing = res.data;
+        setData({
+          workoutLevel: existing.workoutLevel ?? null,
+          height: existing.height ?? 170,
+          weight: existing.weight ?? 70,
+          persona: existing.selectedPersona ?? null,
+          preferredUrl: existing.preferredUrl ?? null,
+        });
+      })
+      .catch(() => {
+        // 신규 가입자는 일부 필드가 null 일 수 있음 → 기본값 유지
+      });
+  }, [userEmail]);
 
   const canNext = () => {
     switch (step) {
-      case 0: return data.exerciseLevel !== null;
-      case 1: return true;
-      case 2: return data.persona !== null;
-      case 3: return data.selectedVideoId !== null;
+      case 0: return data.workoutLevel !== null;
+      case 1: return true; // 키 (슬라이더, 항상 값 있음)
+      case 2: return true; // 몸무게 (슬라이더, 항상 값 있음)
+      case 3: return data.persona !== null;
+      case 4: return data.preferredUrl !== null;
       default: return false;
     }
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (step < TOTAL_STEPS - 1) {
       setStep(step + 1);
-    } else {
-      // TODO: API 호출로 온보딩 데이터 저장
+      return;
+    }
+
+    // 마지막 step → 백엔드에 PATCH
+    if (!userEmail) {
+      Alert.alert('오류', '로그인 정보가 없습니다. 다시 로그인해주세요.');
+      router.replace('/(auth)/login');
+      return;
+    }
+    if (!data.workoutLevel || !data.persona || !data.preferredUrl) {
+      Alert.alert('오류', '모든 항목을 선택해주세요.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await memberService.updateOnboarding(userEmail, {
+        selectedPersona: data.persona,
+        workoutLevel: data.workoutLevel,
+        height: data.height,
+        weight: data.weight,
+        preferredUrl: data.preferredUrl,
+      });
+      markOnboardingCompleted(); // 가드가 (onboarding) 으로 다시 안 빠지게
       router.replace('/(tabs)');
+    } catch (e: any) {
+      console.error('[onboarding patch] status=', e.response?.status, 'data=', e.response?.data);
+      const msg = e.response?.data?.message || '온보딩 저장에 실패했습니다';
+      Alert.alert(`온보딩 실패 (${e.response?.status ?? 'no-response'})`, msg);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -189,9 +250,10 @@ export default function OnboardingScreen() {
         showsVerticalScrollIndicator={false}
       >
         {step === 0 && <StepLevel data={data} setData={setData} />}
-        {step === 1 && <StepWeight data={data} setData={setData} />}
-        {step === 2 && <StepPersona data={data} setData={setData} />}
-        {step === 3 && <StepVideo data={data} setData={setData} />}
+        {step === 1 && <StepHeight data={data} setData={setData} />}
+        {step === 2 && <StepWeight data={data} setData={setData} />}
+        {step === 3 && <StepPersona data={data} setData={setData} />}
+        {step === 4 && <StepVideo data={data} setData={setData} />}
       </ScrollView>
 
       {/* 하단 버튼 */}
@@ -199,7 +261,8 @@ export default function OnboardingScreen() {
         <Button
           title={step === TOTAL_STEPS - 1 ? '완료' : '다음  >'}
           onPress={handleNext}
-          disabled={!canNext()}
+          disabled={!canNext() || submitting}
+          loading={submitting}
         />
       </View>
     </SafeAreaView>
@@ -207,9 +270,10 @@ export default function OnboardingScreen() {
 }
 
 // ─── Step 1: 운동 수준 ──────────────────────────────
-const LEVELS: { key: ExerciseLevel; label: string; desc: string }[] = [
-  { key: 'BEGINNER', label: '입문', desc: '운동 자세, 운동 루틴 등 아무것도 몰라요' },
-  { key: 'NOVICE', label: '초급', desc: '자세는 조금 알지만 무슨 운동을 해야 할지 몰라요' },
+// 백엔드 WorkoutLevel: STARTER < BEGINNER < INTERMEDIATE < ADVANCED < EXPERT
+const LEVELS: { key: WorkoutLevel; label: string; desc: string }[] = [
+  { key: 'STARTER', label: '입문', desc: '운동 자세, 운동 루틴 등 아무것도 몰라요' },
+  { key: 'BEGINNER', label: '초급', desc: '자세는 조금 알지만 무슨 운동을 해야 할지 몰라요' },
   { key: 'INTERMEDIATE', label: '중급', desc: '운동 자세를 잘 알고, 나만의 루틴이 있어요' },
   { key: 'ADVANCED', label: '고급', desc: '운동을 직업으로 삼을 만큼의 지식이 있어요' },
   { key: 'EXPERT', label: '전문가', desc: '운동 선수급의 지식과 경험을 갖고 있어요' },
@@ -233,12 +297,12 @@ function StepLevel({
           key={level.key}
           style={[
             styles.optionCard,
-            data.exerciseLevel === level.key && styles.optionCardActive,
+            data.workoutLevel === level.key && styles.optionCardActive,
           ]}
-          onPress={() => setData({ ...data, exerciseLevel: level.key })}
+          onPress={() => setData({ ...data, workoutLevel: level.key })}
           activeOpacity={0.7}
         >
-          <Text style={[styles.optionLabel, data.exerciseLevel === level.key && styles.optionLabelActive]}>
+          <Text style={[styles.optionLabel, data.workoutLevel === level.key && styles.optionLabelActive]}>
             {level.label}
           </Text>
           <Text style={styles.optionDesc}>{level.desc}</Text>
@@ -248,7 +312,48 @@ function StepLevel({
   );
 }
 
-// ─── Step 2: 목표 몸무게 ─────────────────────────────
+// ─── Step 1: 키 ─────────────────────────────
+// 백엔드 OnboardingRequestDto.height 와 매핑
+function StepHeight({
+  data,
+  setData,
+}: {
+  data: OnboardingData;
+  setData: React.Dispatch<React.SetStateAction<OnboardingData>>;
+}) {
+  return (
+    <View>
+      <Text style={styles.stepIcon}>📏</Text>
+      <Text style={styles.stepTitle}>키가 어떻게 되시나요?</Text>
+      <Text style={styles.stepDesc}>
+        정확한 운동 강도와 칼로리 계산에 사용돼요. 외부에 공개되지 않아요.
+      </Text>
+
+      <Text style={styles.weightDisplay}>
+        {data.height} <Text style={styles.weightUnit}>cm</Text>
+      </Text>
+
+      <Slider
+        style={styles.slider}
+        minimumValue={100}
+        maximumValue={220}
+        step={1}
+        value={data.height}
+        onValueChange={(v) => setData({ ...data, height: v })}
+        minimumTrackTintColor={COLORS.primary}
+        maximumTrackTintColor={COLORS.surfaceLight}
+        thumbTintColor={COLORS.primary}
+      />
+      <View style={styles.sliderLabels}>
+        <Text style={styles.sliderLabel}>100cm</Text>
+        <Text style={styles.sliderLabel}>220cm</Text>
+      </View>
+    </View>
+  );
+}
+
+// ─── Step 2: 몸무게 ─────────────────────────────
+// 백엔드 OnboardingRequestDto.weight 와 매핑
 function StepWeight({
   data,
   setData,
@@ -270,11 +375,11 @@ function StepWeight({
 
       <View style={styles.motivationBox}>
         <Text style={styles.motivationIcon}>🏆</Text>
-        <Text style={styles.motivationText}>{getMotivation(data.targetWeight)}</Text>
+        <Text style={styles.motivationText}>{getMotivation(data.weight)}</Text>
       </View>
 
       <Text style={styles.weightDisplay}>
-        {data.targetWeight} <Text style={styles.weightUnit}>kg</Text>
+        {data.weight} <Text style={styles.weightUnit}>kg</Text>
       </Text>
 
       <Slider
@@ -282,8 +387,8 @@ function StepWeight({
         minimumValue={30}
         maximumValue={150}
         step={1}
-        value={data.targetWeight}
-        onValueChange={(v) => setData({ ...data, targetWeight: v })}
+        value={data.weight}
+        onValueChange={(v) => setData({ ...data, weight: v })}
         minimumTrackTintColor={COLORS.primary}
         maximumTrackTintColor={COLORS.surfaceLight}
         thumbTintColor={COLORS.primary}
@@ -297,9 +402,11 @@ function StepWeight({
 }
 
 // ─── Step 3: 트레이너 페르소나 ───────────────────────
-const PERSONAS: { key: PersonaType; icon: string; label: string; desc: string }[] = [
-  { key: 'FRIENDLY', icon: '🐣', label: '헬린이', desc: '친절하고 격려하는 초보 친화 코치' },
-  { key: 'STRICT', icon: '🫡', label: 'FM 교관', desc: '엄격하고 체계적인 군대식 트레이너' },
+// 백엔드 SelectedPersona: BEGINNER, ADVANCED, DIET, REHAB
+const PERSONAS: { key: SelectedPersona; icon: string; label: string; desc: string }[] = [
+  { key: 'BEGINNER', icon: '🐣', label: '헬린이', desc: '친절하고 격려하는 초보 친화 코치' },
+  { key: 'ADVANCED', icon: '🫡', label: 'FM 교관', desc: '엄격하고 체계적인 군대식 트레이너' },
+  { key: 'DIET', icon: '🥗', label: '다이어터', desc: '체중 관리에 특화된 식단·운동 코치' },
   { key: 'REHAB', icon: '🏥', label: '재활 전문', desc: '안전 최우선, 부상 방지 중심 가이드' },
 ];
 
@@ -409,13 +516,14 @@ function StepVideo({
       {/* 선택된 카테고리 영상 그리드 */}
       <View style={styles.videoGrid}>
         {pageVideos.map((video) => {
-          const isSelected = data.selectedVideoId === video.id;
+          const videoUrl = `https://www.youtube.com/watch?v=${video.youtubeId}`;
+          const isSelected = data.preferredUrl === videoUrl;
           return (
             <TouchableOpacity
               key={video.id}
               style={[styles.videoCard, isSelected && styles.videoCardActive]}
               onPress={() =>
-                setData({ ...data, selectedVideoId: video.id })
+                setData({ ...data, preferredUrl: videoUrl })
               }
               activeOpacity={0.7}
             >

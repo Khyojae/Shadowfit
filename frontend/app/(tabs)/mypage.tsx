@@ -1,31 +1,28 @@
+import { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { COLORS, FONT_SIZE, SPACING, RADIUS } from '@/constants/Colors';
 import { useAuthStore } from '@/stores/authStore';
+import { memberService } from '@/services/memberService';
+import type { OnboardingResponse } from '@/types/user';
 
+// 백엔드 WorkoutLevel: STARTER < BEGINNER < INTERMEDIATE < ADVANCED < EXPERT
 const LEVEL_MAP: Record<string, { label: string; desc: string }> = {
-  BEGINNER: { label: '입문', desc: '운동 자세, 운동 루틴 등 아무것도 몰라요' },
-  NOVICE: { label: '초급', desc: '자세는 조금 알지만 무슨 운동을 해야 할지 몰라요' },
+  STARTER: { label: '입문', desc: '운동 자세, 운동 루틴 등 아무것도 몰라요' },
+  BEGINNER: { label: '초급', desc: '자세는 조금 알지만 무슨 운동을 해야 할지 몰라요' },
   INTERMEDIATE: { label: '중급', desc: '운동 자세를 잘 알고, 나만의 루틴이 있어요' },
   ADVANCED: { label: '고급', desc: '운동을 직업으로 삼을 만큼의 지식이 있어요' },
   EXPERT: { label: '전문가', desc: '운동 선수급의 지식과 경험을 갖고 있어요' },
 };
 
+// 백엔드 SelectedPersona: BEGINNER, ADVANCED, DIET, REHAB
 const PERSONA_MAP: Record<string, { icon: string; label: string; desc: string }> = {
-  FRIENDLY: { icon: '🐣', label: '헬린이', desc: '친절하고 격려하는 초보 친화 코치' },
-  STRICT: { icon: '🫡', label: 'FM 교관', desc: '엄격하고 체계적인 군대식 트레이너' },
+  BEGINNER: { icon: '🐣', label: '헬린이', desc: '친절하고 격려하는 초보 친화 코치' },
+  ADVANCED: { icon: '🫡', label: 'FM 교관', desc: '엄격하고 체계적인 군대식 트레이너' },
+  DIET: { icon: '🥗', label: '다이어터', desc: '체중 관리에 특화된 식단·운동 코치' },
   REHAB: { icon: '🏥', label: '재활 전문', desc: '안전 최우선, 부상 방지 중심 가이드' },
-};
-
-// TODO: API 연동 후 실제 유저 데이터로 교체
-const MOCK_PROFILE = {
-  email: 'user@example.com',
-  exerciseLevel: 'NOVICE',
-  targetWeight: 70,
-  persona: 'STRICT',
-  referenceVideo: null as string | null,
 };
 
 export default function MyPageScreen() {
@@ -33,13 +30,35 @@ export default function MyPageScreen() {
   const logout = useAuthStore((s) => s.logout);
   const user = useAuthStore((s) => s.user);
 
-  const level = LEVEL_MAP[MOCK_PROFILE.exerciseLevel] || LEVEL_MAP.BEGINNER;
-  const persona = PERSONA_MAP[MOCK_PROFILE.persona] || PERSONA_MAP.FRIENDLY;
+  const [profile, setProfile] = useState<OnboardingResponse | null>(null);
+
+  // 화면 진입 / 재포커스 마다 최신 데이터 조회 (수정 후 돌아올 때도 갱신)
+  useFocusEffect(
+    useCallback(() => {
+      if (!user?.email) return;
+      memberService
+        .getOnboarding(user.email)
+        .then((res) => setProfile(res.data))
+        .catch(() => {
+          // 조회 실패 시 기존 표시 유지
+        });
+    }, [user?.email]),
+  );
+
+  const level = profile?.workoutLevel ? LEVEL_MAP[profile.workoutLevel] : null;
+  const persona = profile?.selectedPersona ? PERSONA_MAP[profile.selectedPersona] : null;
 
   const handleLogout = () => {
     Alert.alert('로그아웃', '정말 로그아웃하시겠습니까?', [
       { text: '취소', style: 'cancel' },
-      { text: '로그아웃', style: 'destructive', onPress: () => logout() },
+      {
+        text: '로그아웃',
+        style: 'destructive',
+        onPress: async () => {
+          await logout();
+          router.replace('/(auth)/login');
+        },
+      },
     ]);
   };
 
@@ -61,15 +80,15 @@ export default function MyPageScreen() {
             <Text style={styles.avatarIcon}>💪</Text>
           </View>
           <View>
-            <Text style={styles.email}>{user?.email || MOCK_PROFILE.email}</Text>
-            <Text style={styles.memberLabel}>ShadowFit 회원</Text>
+            <Text style={styles.email}>{profile?.username || user?.email || ''}</Text>
+            <Text style={styles.memberLabel}>{user?.email || 'ShadowFit 회원'}</Text>
           </View>
         </View>
 
         {/* 페르소나 설정 */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>페르소나 설정</Text>
-          <TouchableOpacity>
+          <TouchableOpacity onPress={() => router.push('/(onboarding)' as any)}>
             <Text style={styles.editBtn}>✏️ 수정</Text>
           </TouchableOpacity>
         </View>
@@ -77,24 +96,29 @@ export default function MyPageScreen() {
         <InfoCard
           icon="💪"
           label="운동 수준"
-          title={level.label}
-          desc={level.desc}
+          title={level?.label ?? '미설정'}
+          desc={level?.desc}
+        />
+        <InfoCard
+          icon="📏"
+          label="키"
+          title={profile?.height != null ? `${profile.height}cm` : '미설정'}
         />
         <InfoCard
           icon="🎯"
           label="목표 몸무게"
-          title={`${MOCK_PROFILE.targetWeight}kg`}
+          title={profile?.weight != null ? `${profile.weight}kg` : '미설정'}
         />
         <InfoCard
-          icon={persona.icon}
+          icon={persona?.icon ?? '🙂'}
           label="트레이너 페르소나"
-          title={`${persona.icon} ${persona.label}`}
-          desc={persona.desc}
+          title={persona ? `${persona.icon} ${persona.label}` : '미설정'}
+          desc={persona?.desc}
         />
         <InfoCard
           icon="📹"
           label="기준 영상"
-          title={MOCK_PROFILE.referenceVideo || '미설정'}
+          title={profile?.preferredUrl || '미설정'}
         />
 
         {/* 게시판 */}

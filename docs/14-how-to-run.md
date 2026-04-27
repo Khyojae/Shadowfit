@@ -357,6 +357,37 @@ cd "c:/최지호/상명대학교/4학년 1학기/캡스톤 디자인/shadowfit/b
 
 > **주의:** 이 터미널은 닫지 마세요! 닫으면 서버도 꺼집니다. 그대로 두고 새 터미널을 열어서 프론트엔드를 실행합니다.
 
+#### ⚠️ 실제 휴대폰에서 테스트할 때 — Windows 방화벽 8080 포트 허용
+
+`./gradlew bootRun` 으로 띄운 Spring Boot 백엔드는 **8080 포트**를 사용합니다. PC에서만 띄운 상태이므로 외부(휴대폰)에서 접속하려면 방화벽 인바운드 규칙을 추가해야 합니다.
+
+> **Expo Metro 의 8081 포트는 별개입니다.** 폰에서 앱 화면(Expo)이 보인다고 해서 8080(Spring) 도 자동으로 열린 게 아닙니다. 두 포트는 따로따로 허용해야 합니다.
+>
+> ```
+> 폰 ──[8081]──> PC Expo  (앱 화면 받음)
+> 폰 ──[8080]──> PC Spring (회원가입/로그인 등 API)
+> ```
+
+**관리자 권한 PowerShell** 에서 한 번만 실행하면 됩니다:
+
+```powershell
+# 8080(백엔드) 인바운드 허용
+New-NetFirewallRule -DisplayName "Spring Boot 8080" -Direction Inbound -LocalPort 8080 -Protocol TCP -Action Allow
+
+# (참고) 8081(Expo Metro) 도 안 열어둔 상태라면 같이 허용
+New-NetFirewallRule -DisplayName "Expo Metro 8081" -Direction Inbound -LocalPort 8081 -Protocol TCP -Action Allow
+```
+
+**확인 방법:**
+1. 휴대폰을 PC 와 같은 Wi-Fi 에 연결
+2. 휴대폰 브라우저에서 `http://<PC의 LAN IP>:8080/swagger-ui.html` 접속
+3. Swagger 페이지가 열리면 방화벽 통과 OK
+   - PC LAN IP 는 PowerShell 에서 `ipconfig` 실행하면 `IPv4 주소` 항목에서 확인 (예: `192.168.x.x`)
+
+**그래도 안 되면?**
+- 폰과 PC 가 **다른 Wi-Fi** 인지 확인 (모바일 데이터 사용 시 절대 안 닿음)
+- 안티바이러스/네트워크 보안 솔루션이 추가로 차단하는 경우가 있음
+
 ### 5-4단계: Python AI 서버 실행
 
 **새 터미널**을 하나 더 열고:
@@ -577,6 +608,23 @@ gradlew.bat bootRun
 - JAVA_HOME이 JDK 상위 폴더가 아닌 실제 JDK 경로를 가리켜야 합니다.
 - PowerShell에서 임시 설정: `$env:JAVA_HOME="C:\JAVA\jdk-21.0.10"`
 - 영구 설정: Windows 환경변수에서 JAVA_HOME을 `C:\JAVA\jdk-21.0.10` (실제 JDK 폴더)로 변경
+
+**증상: 폰에서 회원가입/로그인 시 "회원가입에 실패했습니다" 또는 Network Error, 그런데 백엔드 터미널엔 요청 로그가 전혀 안 찍힘**
+
+폰의 요청이 PC 의 8080 까지 도달하지 못한 상태입니다. 거의 항상 **Windows 방화벽이 8080 포트를 차단**하고 있어서 발생합니다.
+
+확인:
+1. 폰과 PC 가 **같은 Wi-Fi** 인지 (모바일 데이터 X)
+2. 폰 브라우저에서 `http://<PC의 LAN IP>:8080/swagger-ui.html` 접속 시도
+   - 열리면 방화벽 OK → 다른 원인
+   - 안 열리면 방화벽 차단 확정
+
+해결 — **관리자 권한 PowerShell**:
+```powershell
+New-NetFirewallRule -DisplayName "Spring Boot 8080" -Direction Inbound -LocalPort 8080 -Protocol TCP -Action Allow
+```
+
+> Expo Metro 8081 이 닿는다고 해서 8080 도 자동으로 닿는 게 아닙니다. 두 포트는 별개라 따로 허용해야 합니다.
 
 ### Frontend 관련
 

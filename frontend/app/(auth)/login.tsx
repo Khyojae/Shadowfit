@@ -159,11 +159,22 @@ function LoginForm() {
 }
 
 // ─── 회원가입 폼 ──────────────────────────────────
+type SexOption = 'MALE' | 'FEAMALE' | 'NONE';
+
+const SEX_OPTIONS: { key: SexOption; label: string }[] = [
+  { key: 'MALE', label: '남성' },
+  { key: 'FEAMALE', label: '여성' },
+  { key: 'NONE', label: '선택안함' },
+];
+
 function SignupForm() {
+  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [passwordConfirm, setPasswordConfirm] = useState('');
+  const [sex, setSex] = useState<SexOption>('NONE');
   const [errors, setErrors] = useState<{
+    username?: string;
     email?: string;
     password?: string;
     passwordConfirm?: string;
@@ -173,6 +184,8 @@ function SignupForm() {
 
   const validate = () => {
     const newErrors: typeof errors = {};
+    if (!username.trim()) newErrors.username = '아이디를 입력해주세요';
+    else if (username.trim().length < 3) newErrors.username = '3자 이상 입력해주세요';
     if (!email.trim()) newErrors.email = '이메일을 입력해주세요';
     else if (!/\S+@\S+\.\S+/.test(email)) newErrors.email = '올바른 이메일 형식이 아닙니다';
     if (!password) newErrors.password = '비밀번호를 입력해주세요';
@@ -187,10 +200,24 @@ function SignupForm() {
     if (!validate()) return;
     setLoading(true);
     try {
-      await signup({ email: email.trim(), password, passwordConfirm });
+      await signup({
+        username: username.trim(),
+        email: email.trim(),
+        password,
+        sex,
+        role: 'USER',
+      });
     } catch (e: any) {
-      const msg = e.response?.data?.message || '회원가입에 실패했습니다';
-      Alert.alert('회원가입 실패', msg);
+      console.error('[signup] status=', e.response?.status, 'data=', e.response?.data);
+      const msg =
+        e.response?.data?.message ||
+        e.response?.data ||
+        e.message ||
+        '회원가입에 실패했습니다';
+      Alert.alert(
+        `회원가입 실패 (${e.response?.status ?? 'no-response'})`,
+        typeof msg === 'string' ? msg : JSON.stringify(msg),
+      );
     } finally {
       setLoading(false);
     }
@@ -198,6 +225,17 @@ function SignupForm() {
 
   return (
     <>
+      <Input
+        label="아이디"
+        icon="user"
+        placeholder="3자 이상"
+        value={username}
+        onChangeText={setUsername}
+        error={errors.username}
+        autoCapitalize="none"
+        autoComplete="username"
+        containerStyle={styles.inputGap}
+      />
       <Input
         label="이메일"
         icon="envelope"
@@ -232,6 +270,28 @@ function SignupForm() {
         autoComplete="new-password"
         containerStyle={styles.inputGap}
       />
+
+      <Text style={styles.fieldLabel}>성별</Text>
+      <View style={styles.sexRow}>
+        {SEX_OPTIONS.map((opt) => (
+          <TouchableOpacity
+            key={opt.key}
+            style={[styles.sexChip, sex === opt.key && styles.sexChipActive]}
+            onPress={() => setSex(opt.key)}
+            activeOpacity={0.7}
+          >
+            <Text
+              style={[
+                styles.sexChipLabel,
+                sex === opt.key && styles.sexChipLabelActive,
+              ]}
+            >
+              {opt.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
       <Button
         title="회원가입  →"
         onPress={handleSignup}
@@ -297,6 +357,41 @@ const styles = StyleSheet.create({
   forgotLink: {
     color: COLORS.primary,
     fontWeight: '600',
+  },
+
+  // 성별 선택
+  fieldLabel: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+    marginBottom: SPACING.sm,
+  },
+  sexRow: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    marginBottom: SPACING.lg,
+  },
+  sexChip: {
+    flex: 1,
+    paddingVertical: SPACING.md,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+    alignItems: 'center',
+  },
+  sexChipActive: {
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.primaryDim ?? COLORS.surface,
+  },
+  sexChipLabel: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+  },
+  sexChipLabelActive: {
+    color: COLORS.primary,
+    fontWeight: '700',
   },
 
   // DEV 바로가기
