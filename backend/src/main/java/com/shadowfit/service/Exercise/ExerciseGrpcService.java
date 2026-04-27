@@ -1,5 +1,6 @@
 package com.shadowfit.service.Exercise;
 import com.google.protobuf.Empty;
+import com.shadowfit.global.config.InternalAuthInterceptor;
 import com.shadowfit.grpc.ExerciseServiceGrpc;
 import com.shadowfit.grpc.PoseDataBatchRequest;
 import com.shadowfit.grpc.PoseDataRequest;

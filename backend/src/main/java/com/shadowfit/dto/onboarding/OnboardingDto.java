@@ -42,7 +42,7 @@ public class OnboardingDto {
                 .workoutLevel(member.getWorkoutLevel())
                 .height(member.getHeight())
                 .weight(member.getWeight())
-                .preferredUrl(member.getPreferredUrl())
+                .preferredUrl(member.getPreferredurl())
                 .build();
     }
 }

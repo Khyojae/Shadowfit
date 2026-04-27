@@ -16,6 +16,7 @@ import com.shadowfit.repository.exercise.ExercisesRepository;
 import com.shadowfit.repository.member.MemberRepository;
 import com.shadowfit.repository.exercise.SessionRepository;
 import io.grpc.Metadata;
+import io.grpc.stub.MetadataUtils;
 import io.grpc.stub.StreamObserver;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,11 +26,10 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
-
+import io.grpc.stub.MetadataUtils;
 import java.time.LocalDateTime;
 import java.util.List;
 
-import static jdk.javadoc.internal.doclets.formats.html.markup.HtmlStyle.header;
 
 @Service
 @RequiredArgsConstructor
@@ -54,7 +54,10 @@ public class ExerciseAnalysisService {
         Metadata.Key<String> authKey = Metadata.Key.of("Authorization", Metadata.ASCII_STRING_MARSHALLER);
         header.put(authKey, "Bearer " + internalToken);
 
-        return MetadataUtils.attachHeaders(exerciseAsyncStub, header);
+        // .attachHeaders() 호출 시 명확하게 stub 타입을 맞춰줍니다.
+        return exerciseAsyncStub.withInterceptors(
+                io.grpc.stub.MetadataUtils.newAttachHeadersInterceptor(header)
+        );
     }
 
     /**

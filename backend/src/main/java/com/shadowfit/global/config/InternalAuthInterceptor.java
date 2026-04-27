@@ -34,7 +34,7 @@ public class InternalAuthInterceptor implements ServerInterceptor {
         }
 
         // 10. [통과] 신분증이 확실하면, 안내자(nextt)에게 "다음 로직(Service)으로 보내줘"라고 시킵니다.
-        return nextt.interceptCall(call, headers, nextt);
+        return nextt.startCall(call, headers);
     }
 
 }
