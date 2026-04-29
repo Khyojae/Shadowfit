@@ -2,6 +2,7 @@ import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
+import { router } from 'expo-router';
 
 // Expo dev 모드에서는 Metro 가 알려주는 호스트(=PC LAN IP)를 자동으로 사용한다.
 // 안드로이드 에뮬레이터는 호스트 PC 를 10.0.2.2 로 봐야 하므로 별도 처리.
@@ -50,13 +51,22 @@ api.interceptors.request.use(async (config) => {
   return config;
 });
 
-// 응답 인터셉터: 401 시 토큰 정리
+// 응답 인터셉터: 401 시 토큰 정리 + 강제 로그아웃 (가드가 로그인 화면으로 보냄)
+// 단, "로그인/회원가입 자체"의 401 은 잘못된 비번을 알려야 하니 처리하지 않음
+//   → Authorization 헤더가 실제로 첨부됐던 요청에서만 forceLogout 트리거
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    if (error.response?.status === 401) {
-      await SecureStore.deleteItemAsync('accessToken');
-      await SecureStore.deleteItemAsync('refreshToken');
+    const status = error.response?.status;
+    const hadAuthHeader = !!error.config?.headers?.Authorization;
+
+    if (status === 401 && hadAuthHeader) {
+      // 동적 import 로 store ↔ api 순환 의존 회피
+      const { useAuthStore } = require('@/stores/authStore');
+      await useAuthStore.getState().forceLogout();
+      // _layout 가드는 __DEV__ 에서 자동 redirect 를 안 시키므로
+      // 토큰 만료 케이스만큼은 명시적으로 로그인 화면으로 이동
+      router.replace('/(auth)/login');
     }
     return Promise.reject(error);
   }

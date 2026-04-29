@@ -23,6 +23,8 @@ interface AuthState {
   login: (data: LoginRequest) => Promise<void>;
   signup: (data: SignupRequest) => Promise<void>;
   logout: () => Promise<void>;
+  // 토큰 만료 등으로 서버 호출 없이 로컬 세션만 정리할 때 사용
+  forceLogout: () => Promise<void>;
   restoreSession: () => Promise<void>;
   // 온보딩 완료 화면에서 PATCH 후 호출
   markOnboardingCompleted: () => void;
@@ -153,6 +155,22 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         isLoading: false,
       });
     }
+  },
+
+  // 서버에 logout API 를 호출하지 않고 로컬만 정리 (토큰 만료 케이스용)
+  forceLogout: async () => {
+    await SecureStore.deleteItemAsync('accessToken');
+    await SecureStore.deleteItemAsync('refreshToken');
+    await SecureStore.deleteItemAsync('userEmail');
+    set({
+      user: null,
+      accessToken: null,
+      refreshToken: null,
+      role: null,
+      isAuthenticated: false,
+      onboardingCompleted: null,
+      isLoading: false,
+    });
   },
 
   markOnboardingCompleted: () => set({ onboardingCompleted: true }),
