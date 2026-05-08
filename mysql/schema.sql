@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS exercises (
     target_joints JSON,
     sync_threshold_beginner DECIMAL(5,2) DEFAULT 60.00,
     sync_threshold_advanced DECIMAL(5,2) DEFAULT 85.00,
+    expected_duration_minutes INT DEFAULT 15,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP -- DEFAULT 추가
     );
 
@@ -59,7 +60,8 @@ CREATE TABLE IF NOT EXISTS exercise_sessions (
     min_sync_rate DECIMAL(5,2),
     calories_burned DECIMAL(7,2),
     difficulty_level INT DEFAULT 1,
-    status ENUM('IN_PROGRESS', 'COMPLETED', 'CANCELLED') DEFAULT 'IN_PROGRESS',
+    status ENUM('IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'FAILED') DEFAULT 'IN_PROGRESS',
+    version BIGINT NOT NULL DEFAULT 0, -- 낙관적 락 (JPA @Version)
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- DEFAULT 추가
     FOREIGN KEY (member_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (exercise_id) REFERENCES exercises(id)

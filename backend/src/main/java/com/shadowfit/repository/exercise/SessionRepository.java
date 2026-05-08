@@ -22,4 +22,8 @@ public interface SessionRepository extends JpaRepository<Session,Long> {
             Long memberId, Long exerciseId, Status status
     );
 
-    List<Session> findByMemberIdAndStartTimeBetween(Long memberId, LocalDateTime start, LocalDateTime end);}
+    List<Session> findByMemberIdAndStartTimeBetween(Long memberId, LocalDateTime start, LocalDateTime end);
+
+    // [타임아웃 체크용] 특정 상태의 모든 세션 조회 (Exercise 정보 포함)
+    @Query("SELECT s FROM Session s JOIN FETCH s.exercise WHERE s.status = :status")
+    List<Session> findByStatus(@Param("status") Status status);}

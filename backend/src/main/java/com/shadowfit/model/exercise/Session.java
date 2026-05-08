@@ -4,6 +4,7 @@ import com.shadowfit.model.member.Member;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
+import jakarta.persistence.Version;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -59,6 +60,12 @@ public class Session {
     @Enumerated(EnumType.STRING) // 숫자가 아닌 문자열 이름으로 저장
     @Builder.Default
     private Status status = Status.IN_PROGRESS;
+
+    // 낙관적 락: FastAPI 완료 콜백과 스케줄러 타임아웃이 동시에 같은 세션을 갱신할 때 충돌 감지용
+    @Version
+    @Column(nullable = false)
+    @Builder.Default
+    private Long version = 0L;
 
     @CreationTimestamp // INSERT 시 현재 시간 자동 입력
     @Column(nullable = false, updatable = false)

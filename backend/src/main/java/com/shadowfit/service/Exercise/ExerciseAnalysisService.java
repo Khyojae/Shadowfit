@@ -21,7 +21,10 @@ import io.grpc.stub.StreamObserver;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.devh.boot.grpc.client.inject.GrpcClient;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,6 +44,11 @@ public class ExerciseAnalysisService {
     private final MemberRepository memberRepository;
     private final SessionService sessionService;
     private final ExerciseReferenceRepository referenceRepository;
+
+    // 자기 주입: completeSession → applyCompleteFromApp 호출이 Spring 프록시를 통과하도록 함.
+    @Lazy
+    @Autowired
+    private ExerciseAnalysisService self;
 
     @Value("${internal.api.token}")
     private String internalToken;
@@ -188,19 +196,41 @@ public class ExerciseAnalysisService {
     /**
      * [STEP 5: 분석 결과 영속화 (Callback)]
      * AI 서버가 분석을 마치고 gRPC로 보고해온 최종 결과를 DB에 반영합니다.
+     *
+     * 낙관적 락 충돌 시(스케줄러가 동시에 FAILED로 변경한 경우) 재조회 후 COMPLETED로 덮어씁니다.
      */
-    @Transactional
     public void completeSession(Long sessionId, SessionUpdateRequestDto dto) {
+        int maxAttempts = 3;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                self.applyCompleteFromApp(sessionId, dto);
+                log.info("세션 {} DB 업데이트 완료", sessionId);
+                return;
+            } catch (ObjectOptimisticLockingFailureException e) {
+                if (attempt == maxAttempts) {
+                    throw e;
+                }
+                log.warn("세션 {} 완료 처리 충돌 - 재시도 {}/{}", sessionId, attempt, maxAttempts);
+            }
+        }
+    }
+
+    @Transactional
+    public void applyCompleteFromApp(Long sessionId, SessionUpdateRequestDto dto) {
         Session session = sessionRepository.findById(sessionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.SESSION_NOT_FOUND));
+
+        // 멱등성: 같은 결과가 재전송된 경우(2-1, 2-2) 첫 완료 시각/기록을 보존하고 즉시 종료
+        if (session.getStatus() == Status.COMPLETED) {
+            return;
+        }
 
         session.setTotalReps(dto.getTotalReps());
         session.setAvgSyncRate(java.math.BigDecimal.valueOf(dto.getAvgSyncRate()));
         session.setStatus(Status.COMPLETED);
         session.setEndTime(LocalDateTime.now());
 
-        sessionRepository.save(session);
-        log.info("세션 {} DB 업데이트 완료", sessionId);
+        sessionRepository.saveAndFlush(session);
     }
 }
 

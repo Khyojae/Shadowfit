@@ -1,0 +1,69 @@
+spring:
+  application:
+    name: shadowfit-test
+
+  # 테스트는 H2 인메모리 DB 사용 (MySQL 호스트 의존 제거)
+  datasource:
+    url: jdbc:h2:mem:shadowfit_test;MODE=MySQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+
+  # MySQL 전용 schema.sql 실행 비활성화. JPA가 엔티티 기반으로 스키마 생성.
+  sql:
+    init:
+      mode: never
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    database-platform: org.hibernate.dialect.H2Dialect
+    properties:
+      hibernate:
+        format_sql: false
+    defer-datasource-initialization: false
+
+# gRPC 클라이언트는 컨텍스트 로드 시 실제 연결을 시도하지 않으므로 그대로 두되,
+# 테스트에서 호출되지 않도록 더미 주소만 지정
+grpc:
+  port: 0
+  server:
+    port: 0
+  client:
+    fastapi-client:
+      address: 'static://localhost:0'
+      negotiation-type: plaintext
+
+# 프로덕션 설정에서 ${JWT_SECRET}, ${INTERNAL_API_TOKEN}이 필수이므로 테스트용 더미값 주입
+jwt:
+  secret: test-secret-key-for-unit-tests-only-do-not-use-in-production-environment
+  expiration_time: 86400
+  refresh_expiration_time: 604800
+
+internal:
+  api:
+    token: test-internal-token
+
+ai-server:
+  url: http://localhost:0
+
+security:
+  whitelist:
+    - "/"
+    - "/error"
+    - "/v3/api-docs/**"
+    - "/swagger-ui/**"
+    - "/member/login"
+    - "/member/signup"
+    - "/ws/**"
+
+exercise:
+  session:
+    timeout:
+      default-buffer-minutes: 30
+      check-interval-minutes: 1
+
+logging:
+  level:
+    root: WARN
+    com.shadowfit: INFO

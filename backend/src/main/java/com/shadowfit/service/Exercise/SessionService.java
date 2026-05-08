@@ -16,6 +16,8 @@ import com.shadowfit.repository.exercise.ExercisesRepository;
 import com.shadowfit.repository.member.MemberRepository;
 import com.shadowfit.repository.exercise.SessionRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.shadowfit.grpc.SessionStatus;
@@ -36,6 +38,11 @@ public class SessionService {
     private final ExercisesRepository exercisesRepository;
     private final MemberRepository memberRepository;
     private final ObjectMapper objectMapper;
+
+    // 자기 주입: completeSession → applyComplete 호출이 Spring 프록시를 통과해 @Transactional이 적용되도록 함.
+    @Lazy
+    @Autowired
+    private SessionService self;
 
     /**
      * [세션 생성] 새로운 운동 분석 프로세스를 시작하기 위한 초기 레코드를 생성합니다.
@@ -66,12 +73,35 @@ public class SessionService {
     /**
      * [세션 완료] AI 서버로부터 수신한 분석 결과를 바탕으로 세션을 최종 업데이트합니다.
      *
+     * 낙관적 락 충돌 시(스케줄러가 동시에 FAILED로 변경한 경우) 재조회하여 COMPLETED로 덮어씁니다.
+     * 사용자가 실제로 운동한 데이터(rep/sync rate)는 어떤 경우에도 유실되면 안 됩니다.
+     *
      * @param request AI 서버(gRPC)에서 넘어온 최종 분석 데이터
      */
-    @Transactional
     public void completeSession(SessionCompleteRequest request) {
+        int maxAttempts = 3;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                self.applyComplete(request);
+                return;
+            } catch (org.springframework.orm.ObjectOptimisticLockingFailureException e) {
+                if (attempt == maxAttempts) {
+                    throw e;
+                }
+                // 동시에 스케줄러가 FAILED로 변경한 케이스. 재조회 후 COMPLETED로 덮어쓰기 위해 재시도.
+            }
+        }
+    }
+
+    @Transactional
+    public void applyComplete(SessionCompleteRequest request) {
         Session session = sessionRepository.findById(request.getSessionId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.SESSION_NOT_FOUND));
+
+        // 멱등성: FastAPI가 응답 유실로 같은 결과를 재전송한 경우(2-1, 2-2) 첫 완료 시각/기록을 보존하고 즉시 종료
+        if (session.getStatus() == Status.COMPLETED) {
+            return;
+        }
 
         session.setStatus(Status.COMPLETED);
         session.setEndTime(LocalDateTime.now());
@@ -80,7 +110,28 @@ public class SessionService {
         session.setAvgSyncRate(java.math.BigDecimal.valueOf(request.getAvgSyncRate()));
         session.setCaloriesBurned(java.math.BigDecimal.valueOf(request.getCaloriesBurned()));
 
-        sessionRepository.save(session);
+        sessionRepository.saveAndFlush(session);
+    }
+
+    /**
+     * [타임아웃 처리] 세션이 아직 IN_PROGRESS 상태이면 FAILED로 변경합니다.
+     *
+     * 스케줄러 호출용. 별도 트랜잭션으로 실행되어 한 세션의 충돌이 다른 세션 처리에 영향을 주지 않습니다.
+     * FastAPI 완료 콜백과 동시 진행 시 OptimisticLockingFailure가 발생할 수 있으며,
+     * 이때는 호출 측이 catch하고 양보합니다(FastAPI 결과 우선).
+     *
+     * @return FAILED로 전환되었으면 true, 이미 다른 상태이거나 세션이 없으면 false
+     */
+    @Transactional
+    public boolean markAsFailedIfStillInProgress(Long sessionId, LocalDateTime endTime) {
+        Session session = sessionRepository.findById(sessionId).orElse(null);
+        if (session == null || session.getStatus() != Status.IN_PROGRESS) {
+            return false;
+        }
+        session.setStatus(Status.FAILED);
+        session.setEndTime(endTime);
+        sessionRepository.saveAndFlush(session);
+        return true;
     }
 
     @Transactional(readOnly = true)

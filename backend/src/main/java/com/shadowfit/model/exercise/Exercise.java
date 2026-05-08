@@ -48,6 +48,10 @@ public class Exercise {
     @Column(precision = 5, scale = 2)
     private BigDecimal syncThresholdAdvanced = new BigDecimal("85.00");
 
+    @Builder.Default
+    @Column(nullable = false)
+    private Integer expectedDurationMinutes = 15; // 예상 운동시간 (기본값: 15분)
+
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;

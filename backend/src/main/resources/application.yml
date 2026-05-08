@@ -60,6 +60,16 @@ internal:
 ai-server:
   url: ${AI_SERVER_URL:http://shadowfit-ai:8000}
 
+# [5] 운동 세션 타임아웃 설정
+exercise:
+  session:
+    timeout:
+      # 예상 운동시간 + 버퍼(분)로 총 타임아웃 시간 결정
+      # 예: 스쿼트 예상시간 15분 + 30분 버퍼 = 45분 타임아웃
+      default-buffer-minutes: 30
+      # 스케줄러 체크 간격(분) - 매 1분마다 체크
+      check-interval-minutes: 1
+
 # [4] 로깅 설정 (최상단 레벨)
 logging:
   level:
