@@ -12,6 +12,7 @@ import {
   ChevronDown,
   Play,
   Square,
+  FlaskConical,
 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -27,11 +28,11 @@ function hexToRgba(hex: string, alpha: number) {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-/** 싱크로율 → 색상 */
+/** 싱크로율 → 색상 (80%+ 정석 / 60~80% 교정 필요 / <60% 부상 위험) */
 function getSyncColor(rate: number) {
-  if (rate >= 70) return COLORS.syncHigh; // 라임 그린
-  if (rate >= 40) return COLORS.syncMid;  // 주황
-  return COLORS.syncLow;                  // 빨강
+  if (rate >= 80) return COLORS.syncHigh; // 라임 그린 — 정석
+  if (rate >= 60) return COLORS.syncMid;  // 주황 — 교정 필요
+  return COLORS.syncLow;                  // 빨강 — 부상 위험
 }
 
 export default function ExerciseScreen() {
@@ -56,11 +57,10 @@ export default function ExerciseScreen() {
     const prev = prevSyncRef.current;
     prevSyncRef.current = syncRate;
 
-    if (syncRate < 40 && prev >= 40) {
-      // 낮은 구간 진입 시 강한 진동
+    // 부상 위험 구간 (<60%) 진입/유지 시 진동 알림
+    if (syncRate < 60 && prev >= 60) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-    } else if (syncRate < 40) {
-      // 낮은 구간 유지 시 가벼운 진동
+    } else if (syncRate < 60) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
   }, [syncRate, isRecording]);
@@ -72,8 +72,8 @@ export default function ExerciseScreen() {
       return;
     }
 
-    if (syncRate < 40) {
-      // 빨강: 부드러운 페이드 in/out (점멸 X)
+    if (syncRate < 60) {
+      // 부상 위험 구간(<60%): 빨강이 부드럽게 페이드 in/out
       const pulse = Animated.loop(
         Animated.sequence([
           Animated.timing(borderOpacity, { toValue: 0.9, duration: 800, useNativeDriver: false }),
@@ -84,9 +84,9 @@ export default function ExerciseScreen() {
       return () => pulse.stop();
     }
 
-    // 40% 이상: 은은하게 고정
+    // 60% 이상: 은은하게 고정 (정석 80%+ 는 더 옅게)
     Animated.timing(borderOpacity, {
-      toValue: syncRate >= 70 ? 0.5 : 0.6,
+      toValue: syncRate >= 80 ? 0.5 : 0.6,
       duration: 400,
       useNativeDriver: false,
     }).start();
@@ -190,31 +190,44 @@ export default function ExerciseScreen() {
         {/* DEV: 싱크로율 수동 조절 (AI 서버 연동 전 테스트용) */}
         {__DEV__ && isRecording && (
           <View style={styles.devPanel}>
-            <Text style={styles.devLabel}>🛠 DEV 싱크로율 테스트</Text>
+            <View style={styles.devLabelRow}>
+              <FlaskConical size={14} color={COLORS.textSecondary} strokeWidth={2} />
+              <Text style={styles.devLabel}>DEV 싱크로율 테스트</Text>
+            </View>
+            <Text style={styles.devGuide}>
+              <Text style={{ color: COLORS.syncHigh, fontWeight: '700' }}>80%↑ 정석</Text>
+              <Text>  ·  </Text>
+              <Text style={{ color: COLORS.syncMid, fontWeight: '700' }}>60~80% 교정 필요</Text>
+              <Text>  ·  </Text>
+              <Text style={{ color: COLORS.syncLow, fontWeight: '700' }}>60%↓ 부상 위험</Text>
+            </Text>
             <View style={styles.devRow}>
               <TouchableOpacity
                 style={[styles.devBtn, { borderColor: COLORS.syncLow }]}
-                onPress={() => setSyncRate(25)}
+                onPress={() => setSyncRate(40)}
               >
                 <Text style={[styles.devBtnText, { color: COLORS.syncLow }]}>
-                  빨강 25%
+                  40%
                 </Text>
+                <Text style={styles.devBtnSub}>부상 위험</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.devBtn, { borderColor: COLORS.syncMid }]}
-                onPress={() => setSyncRate(55)}
+                onPress={() => setSyncRate(70)}
               >
                 <Text style={[styles.devBtnText, { color: COLORS.syncMid }]}>
-                  주황 55%
+                  70%
                 </Text>
+                <Text style={styles.devBtnSub}>교정 필요</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.devBtn, { borderColor: COLORS.syncHigh }]}
-                onPress={() => setSyncRate(85)}
+                onPress={() => setSyncRate(90)}
               >
                 <Text style={[styles.devBtnText, { color: COLORS.syncHigh }]}>
-                  녹색 85%
+                  90%
                 </Text>
+                <Text style={styles.devBtnSub}>정석</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -425,12 +438,23 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.warning,
   },
+  devLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginBottom: SPACING.sm,
+  },
   devLabel: {
     fontSize: FONT_SIZE.xs,
-    color: COLORS.warning,
+    color: COLORS.textSecondary,
     fontWeight: '700',
-    marginBottom: SPACING.sm,
+  },
+  devGuide: {
+    fontSize: 10,
+    color: COLORS.textMuted,
     textAlign: 'center',
+    marginBottom: SPACING.sm,
   },
   devRow: {
     flexDirection: 'row',
@@ -445,7 +469,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.4)',
   },
   devBtnText: {
-    fontSize: FONT_SIZE.xs,
-    fontWeight: '700',
+    fontSize: FONT_SIZE.md,
+    fontWeight: '800',
+  },
+  devBtnSub: {
+    fontSize: 10,
+    color: COLORS.textMuted,
+    marginTop: 2,
   },
 });

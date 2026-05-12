@@ -25,12 +25,17 @@ function buildMarkedDates(records: CalendarDay[]): Record<string, any> {
   const marked: Record<string, any> = {};
   for (const r of records) {
     if (!r.hasRecord) continue;
-    // 싱크로율 90 이상이면 primary, 그 미만이면 warning 색으로 구분
-    const goodSync = r.dailyAvgSyncRate != null && r.dailyAvgSyncRate >= 90;
-    marked[r.date] = {
-      marked: true,
-      dotColor: goodSync ? COLORS.primary : COLORS.warning,
-    };
+    // 80% 이상 = 정석(primary) / 60~80% = 교정(warning) / <60% = 부상(error)
+    const sync = r.dailyAvgSyncRate;
+    const dotColor =
+      sync == null
+        ? COLORS.primary
+        : sync >= 80
+        ? COLORS.primary
+        : sync >= 60
+        ? COLORS.warning
+        : COLORS.error;
+    marked[r.date] = { marked: true, dotColor };
   }
   return marked;
 }

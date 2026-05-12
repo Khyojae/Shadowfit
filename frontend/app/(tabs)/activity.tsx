@@ -161,9 +161,10 @@ function WeeklyStat({ Icon, value, label }: { Icon: LucideIcon; value: string; l
   );
 }
 
+// 싱크로율 색상 구간: 80%+ 정석 / 60~80% 교정 필요 / <60% 부상 위험
 function getSyncColor(rate: number) {
-  if (rate >= 90) return COLORS.primary;
-  if (rate >= 80) return COLORS.warning;
+  if (rate >= 80) return COLORS.primary;
+  if (rate >= 60) return COLORS.warning;
   return COLORS.error;
 }
 
