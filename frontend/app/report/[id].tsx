@@ -1,7 +1,17 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import FontAwesome from '@expo/vector-icons/FontAwesome';
+import {
+  ChevronLeft,
+  Download,
+  AlertTriangle,
+  Target,
+  TrendingUp,
+  Timer,
+  Flame,
+  Sparkles,
+  type LucideIcon,
+} from 'lucide-react-native';
 import { COLORS, FONT_SIZE, SPACING, RADIUS } from '@/constants/Colors';
 
 // TODO: API 연동 후 실제 데이터로 교체
@@ -36,39 +46,40 @@ export default function ReportScreen() {
         {/* 헤더 */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()}>
-            <FontAwesome name="chevron-left" size={16} color={COLORS.text} />
+            <ChevronLeft size={20} color={COLORS.text} strokeWidth={2} />
           </TouchableOpacity>
           <View>
             <Text style={styles.title}>운동 보고서</Text>
             <Text style={styles.date}>{MOCK_REPORT.date}</Text>
           </View>
           <TouchableOpacity>
-            <FontAwesome name="download" size={18} color={COLORS.textSecondary} />
+            <Download size={18} color={COLORS.textSecondary} strokeWidth={2} />
           </TouchableOpacity>
         </View>
 
         {/* 요약 카드 */}
         <View style={styles.summaryGrid}>
-          <View style={[styles.summaryCard, styles.summaryCardPrimary]}>
-            <Text style={styles.summaryIcon}>🎯</Text>
-            <Text style={styles.summaryValue}>{MOCK_REPORT.averageSyncRate}%</Text>
-            <Text style={styles.summaryLabel}>평균 싱크로율</Text>
-          </View>
-          <View style={styles.summaryCard}>
-            <Text style={styles.summaryIcon}>📈</Text>
-            <Text style={styles.summaryValue}>{MOCK_REPORT.totalReps}</Text>
-            <Text style={styles.summaryLabel}>총 운동 횟수</Text>
-          </View>
-          <View style={styles.summaryCard}>
-            <Text style={styles.summaryIcon}>⏱</Text>
-            <Text style={styles.summaryValue}>{MOCK_REPORT.totalMinutes}분</Text>
-            <Text style={styles.summaryLabel}>운동 시간</Text>
-          </View>
-          <View style={styles.summaryCard}>
-            <Text style={styles.summaryIcon}>🔥</Text>
-            <Text style={styles.summaryValue}>{MOCK_REPORT.totalCalories}</Text>
-            <Text style={styles.summaryLabel}>소모 칼로리</Text>
-          </View>
+          <SummaryCard
+            Icon={Target}
+            value={`${MOCK_REPORT.averageSyncRate}%`}
+            label="평균 싱크로율"
+            highlight
+          />
+          <SummaryCard
+            Icon={TrendingUp}
+            value={String(MOCK_REPORT.totalReps)}
+            label="총 운동 횟수"
+          />
+          <SummaryCard
+            Icon={Timer}
+            value={`${MOCK_REPORT.totalMinutes}분`}
+            label="운동 시간"
+          />
+          <SummaryCard
+            Icon={Flame}
+            value={String(MOCK_REPORT.totalCalories)}
+            label="소모 칼로리"
+          />
         </View>
 
         {/* 종목별 싱크로율 */}
@@ -107,10 +118,13 @@ export default function ReportScreen() {
         {/* Worst 구간 */}
         {MOCK_REPORT.worstMoment && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>⚠️ Worst 구간</Text>
+            <View style={styles.sectionTitleRow}>
+              <AlertTriangle size={18} color={COLORS.warning} strokeWidth={2} />
+              <Text style={styles.sectionTitle}>Worst 구간</Text>
+            </View>
             <View style={styles.worstCard}>
               <View style={styles.worstHeader}>
-                <FontAwesome name="warning" size={16} color={COLORS.warning} />
+                <AlertTriangle size={16} color={COLORS.warning} strokeWidth={2} />
                 <Text style={styles.worstTitle}>
                   {MOCK_REPORT.worstMoment.exercise} — {MOCK_REPORT.worstMoment.time}
                 </Text>
@@ -125,7 +139,10 @@ export default function ReportScreen() {
         {/* AI 안전 리포트 */}
         {MOCK_REPORT.aiReport && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>🤖 AI 안전 리포트</Text>
+            <View style={styles.sectionTitleRow}>
+              <Sparkles size={18} color={COLORS.primary} strokeWidth={2} />
+              <Text style={styles.sectionTitle}>AI 안전 리포트</Text>
+            </View>
             <View style={styles.aiCard}>
               <Text style={styles.aiText}>{MOCK_REPORT.aiReport}</Text>
             </View>
@@ -138,9 +155,29 @@ export default function ReportScreen() {
   );
 }
 
+function SummaryCard({ Icon, value, label, highlight }: {
+  Icon: LucideIcon;
+  value: string;
+  label: string;
+  highlight?: boolean;
+}) {
+  return (
+    <View style={[styles.summaryCard, highlight && styles.summaryCardPrimary]}>
+      <Icon
+        size={20}
+        color={highlight ? COLORS.primary : COLORS.textSecondary}
+        strokeWidth={2}
+      />
+      <Text style={styles.summaryValue}>{value}</Text>
+      <Text style={styles.summaryLabel}>{label}</Text>
+    </View>
+  );
+}
+
+// 싱크로율 색상 구간: 80%+ 정석 / 60~80% 교정 필요 / <60% 부상 위험
 function getSyncColor(rate: number) {
-  if (rate >= 90) return COLORS.primary;
-  if (rate >= 80) return COLORS.warning;
+  if (rate >= 80) return COLORS.primary;
+  if (rate >= 60) return COLORS.warning;
   return COLORS.error;
 }
 
@@ -174,13 +211,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   summaryCardPrimary: { borderColor: COLORS.primary },
-  summaryIcon: { fontSize: 18, marginBottom: 4 },
-  summaryValue: { fontSize: FONT_SIZE.xxl, fontWeight: '800', color: COLORS.text },
+  summaryValue: { fontSize: FONT_SIZE.xxl, fontWeight: '800', color: COLORS.text, marginTop: 4 },
   summaryLabel: { fontSize: FONT_SIZE.xs, color: COLORS.textSecondary, marginTop: 4 },
 
   // Section
   section: { paddingHorizontal: SPACING.xxl, marginTop: SPACING.xxl },
   sectionTitle: { fontSize: FONT_SIZE.lg, fontWeight: '700', color: COLORS.text, marginBottom: SPACING.md },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
 
   // Exercise rows
   exerciseRow: {

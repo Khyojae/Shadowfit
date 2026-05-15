@@ -8,12 +8,13 @@ import {
   type TextInputProps,
   type ViewStyle,
 } from 'react-native';
-import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { Eye, EyeOff, type LucideIcon } from 'lucide-react-native';
 import { COLORS, FONT_SIZE, RADIUS, SPACING } from '@/constants/Colors';
 
 interface InputProps extends TextInputProps {
   label?: string;
-  icon?: keyof typeof FontAwesome.glyphMap;
+  /** Lucide 아이콘 컴포넌트. 예: <Input icon={Mail} ... /> */
+  icon?: LucideIcon;
   error?: string;
   isPassword?: boolean;
   containerStyle?: ViewStyle;
@@ -21,7 +22,7 @@ interface InputProps extends TextInputProps {
 
 export default function Input({
   label,
-  icon,
+  icon: Icon,
   error,
   isPassword = false,
   containerStyle,
@@ -40,13 +41,10 @@ export default function Input({
           error && styles.inputError,
         ]}
       >
-        {icon && (
-          <FontAwesome
-            name={icon}
-            size={16}
-            color={COLORS.textMuted}
-            style={styles.icon}
-          />
+        {Icon && (
+          <View style={styles.icon}>
+            <Icon size={18} color={COLORS.textMuted} strokeWidth={2} />
+          </View>
         )}
         <TextInput
           style={styles.input}
@@ -62,11 +60,11 @@ export default function Input({
             onPress={() => setShowPassword(!showPassword)}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <FontAwesome
-              name={showPassword ? 'eye' : 'eye-slash'}
-              size={16}
-              color={COLORS.textMuted}
-            />
+            {showPassword ? (
+              <EyeOff size={18} color={COLORS.textMuted} strokeWidth={2} />
+            ) : (
+              <Eye size={18} color={COLORS.textMuted} strokeWidth={2} />
+            )}
           </TouchableOpacity>
         )}
       </View>

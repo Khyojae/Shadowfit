@@ -1,40 +1,86 @@
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Calendar, type DateData } from 'react-native-calendars';
-import { useState } from 'react';
-import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { useCallback, useState } from 'react';
+import {
+  CircleUser,
+  Flame,
+  Target,
+  Trophy,
+  Camera,
+  Ruler,
+  PersonStanding,
+  Lightbulb,
+  Ban,
+  type LucideIcon,
+} from 'lucide-react-native';
 import { COLORS, FONT_SIZE, SPACING, RADIUS } from '@/constants/Colors';
 import Button from '@/components/ui/Button';
+import { reportService } from '@/services/reportService';
+import type { CalendarMainResponse, CalendarDay } from '@/types/report';
 
-// TODO: API 연동 후 실제 데이터로 교체
-const MOCK_MARKED_DATES: Record<string, any> = {
-  '2026-03-01': { marked: true, dotColor: COLORS.primary },
-  '2026-03-02': { marked: true, dotColor: COLORS.primary },
-  '2026-03-03': { marked: true, dotColor: COLORS.warning },
-  '2026-03-05': { marked: true, dotColor: COLORS.primary },
-  '2026-03-07': { marked: true, dotColor: COLORS.warning },
-  '2026-03-09': { marked: true, dotColor: COLORS.primary },
-  '2026-03-10': { marked: true, dotColor: COLORS.warning },
-  '2026-03-12': { marked: true, dotColor: COLORS.primary },
-  '2026-03-14': { marked: true, dotColor: COLORS.warning },
-  '2026-03-17': { marked: true, dotColor: COLORS.warning },
-  '2026-03-19': { marked: true, dotColor: COLORS.primary },
-  '2026-03-22': { marked: true, dotColor: COLORS.primary },
-  '2026-03-23': { marked: true, dotColor: COLORS.primary },
-};
+// 백엔드 records 를 react-native-calendars 의 markedDates 형식으로 변환
+function buildMarkedDates(records: CalendarDay[]): Record<string, any> {
+  const marked: Record<string, any> = {};
+  for (const r of records) {
+    if (!r.hasRecord) continue;
+    // 80% 이상 = 정석(primary) / 60~80% = 교정(warning) / <60% = 부상(error)
+    const sync = r.dailyAvgSyncRate;
+    const dotColor =
+      sync == null
+        ? COLORS.primary
+        : sync >= 80
+        ? COLORS.primary
+        : sync >= 60
+        ? COLORS.warning
+        : COLORS.error;
+    marked[r.date] = { marked: true, dotColor };
+  }
+  return marked;
+}
 
 export default function HomeScreen() {
   const router = useRouter();
-  const [selectedDate, setSelectedDate] = useState('');
   const today = new Date().toISOString().split('T')[0];
+  const [selectedDate, setSelectedDate] = useState('');
 
+  // 캘린더가 가리키는 연/월 (사용자가 ◀▶ 눌러 바꿈)
+  const initialDate = new Date();
+  const [viewYear, setViewYear] = useState(initialDate.getFullYear());
+  const [viewMonth, setViewMonth] = useState(initialDate.getMonth() + 1);
+
+  const [data, setData] = useState<CalendarMainResponse | null>(null);
+
+  // 화면 포커스 / 연·월 변경마다 캘린더 데이터 재조회
+  useFocusEffect(
+    useCallback(() => {
+      reportService
+        .getCalendar(viewYear, viewMonth)
+        .then((res) => setData(res.data))
+        .catch((e) => {
+          console.error('[calendar] status=', e.response?.status, 'data=', e.response?.data);
+        });
+    }, [viewYear, viewMonth]),
+  );
+
+  const baseMarked = data ? buildMarkedDates(data.records) : {};
   const markedDates = {
-    ...MOCK_MARKED_DATES,
+    ...baseMarked,
     ...(selectedDate
-      ? { [selectedDate]: { ...MOCK_MARKED_DATES[selectedDate], selected: true, selectedColor: COLORS.primary } }
+      ? {
+          [selectedDate]: {
+            ...(baseMarked[selectedDate] ?? {}),
+            selected: true,
+            selectedColor: COLORS.primary,
+          },
+        }
       : {}),
   };
+
+  const hasRecordOnSelected = selectedDate
+    ? !!baseMarked[selectedDate]
+    : !!baseMarked[today];
 
   return (
     <SafeAreaView style={styles.container}>
@@ -46,15 +92,28 @@ export default function HomeScreen() {
             <Text style={styles.appSubtitle}>AI 자세 교정 트레이너</Text>
           </View>
           <TouchableOpacity onPress={() => router.push('/(tabs)/mypage')}>
-            <FontAwesome name="user-circle-o" size={28} color={COLORS.textSecondary} />
+            <CircleUser size={28} color={COLORS.textSecondary} strokeWidth={1.75} />
           </TouchableOpacity>
         </View>
 
-        {/* 상단 통계 카드 */}
+        {/* 상단 통계 카드 - 백엔드 CalendarMainResponse 의 monthly* 사용 */}
         <View style={styles.statsRow}>
-          <StatCard icon="🔥" value="11일" label="이번 달" />
-          <StatCard icon="🎯" value="84%" label="평균 싱크로율" highlight />
-          <StatCard icon="🏆" value="5일" label="연속 기록" />
+          <StatCard
+            Icon={Flame}
+            value={`${data?.monthlyExerciseDays ?? 0}일`}
+            label="이번 달"
+          />
+          <StatCard
+            Icon={Target}
+            value={`${data?.totalAvgSyncRate ?? 0}%`}
+            label="평균 싱크로율"
+            highlight
+          />
+          <StatCard
+            Icon={Trophy}
+            value={`${data?.consecutiveDays ?? 0}일`}
+            label="연속 기록"
+          />
         </View>
 
         {/* 캘린더 */}
@@ -62,6 +121,11 @@ export default function HomeScreen() {
           <Calendar
             markedDates={markedDates}
             onDayPress={(day: DateData) => setSelectedDate(day.dateString)}
+            onMonthChange={(d: DateData) => {
+              setViewYear(d.year);
+              setViewMonth(d.month);
+              setSelectedDate('');
+            }}
             theme={{
               calendarBackground: COLORS.card,
               textSectionTitleColor: COLORS.textSecondary,
@@ -87,31 +151,20 @@ export default function HomeScreen() {
               : `${new Date().getMonth() + 1}월 ${new Date().getDate()}일 ${['일', '월', '화', '수', '목', '금', '토'][new Date().getDay()]}요일`}
           </Text>
           <Text style={styles.noRecordText}>
-            {MOCK_MARKED_DATES[selectedDate || today]
-              ? '운동 기록이 있습니다'
-              : '운동 기록이 없습니다'}
+            {hasRecordOnSelected ? '운동 기록이 있습니다' : '운동 기록이 없습니다'}
           </Text>
         </View>
 
         {/* 촬영 가이드 */}
         <View style={styles.guideBox}>
-          <Text style={styles.guideHeader}>📌 운동 촬영 가이드</Text>
-          <View style={styles.guideItem}>
-            <Text style={styles.guideBullet}>📐</Text>
-            <Text style={styles.guideText}>정면 또는 측면(45°)에서 촬영</Text>
+          <View style={styles.guideHeaderRow}>
+            <Camera size={16} color={COLORS.text} strokeWidth={2} />
+            <Text style={styles.guideHeader}>운동 촬영 가이드</Text>
           </View>
-          <View style={styles.guideItem}>
-            <Text style={styles.guideBullet}>🧍</Text>
-            <Text style={styles.guideText}>전신이 보이도록 1.5m 이상 거리 확보</Text>
-          </View>
-          <View style={styles.guideItem}>
-            <Text style={styles.guideBullet}>💡</Text>
-            <Text style={styles.guideText}>밝은 조명, 단색 배경 권장</Text>
-          </View>
-          <View style={styles.guideItem}>
-            <Text style={styles.guideBullet}>🚫</Text>
-            <Text style={styles.guideText}>거울 반사, 여러 사람이 보이는 환경은 피해주세요</Text>
-          </View>
+          <GuideItem Icon={Ruler} text="정면 또는 측면(45°)에서 촬영" />
+          <GuideItem Icon={PersonStanding} text="전신이 보이도록 1.5m 이상 거리 확보" />
+          <GuideItem Icon={Lightbulb} text="밝은 조명, 단색 배경 권장" />
+          <GuideItem Icon={Ban} text="거울 반사, 여러 사람이 보이는 환경은 피해주세요" />
         </View>
 
         {/* 운동 시작 버튼 */}
@@ -127,17 +180,30 @@ export default function HomeScreen() {
   );
 }
 
-function StatCard({ icon, value, label, highlight }: {
-  icon: string;
+function StatCard({ Icon, value, label, highlight }: {
+  Icon: LucideIcon;
   value: string;
   label: string;
   highlight?: boolean;
 }) {
   return (
     <View style={[styles.statCard, highlight && styles.statCardHighlight]}>
-      <Text style={styles.statIcon}>{icon}</Text>
+      <Icon
+        size={20}
+        color={highlight ? COLORS.primary : COLORS.textSecondary}
+        strokeWidth={2}
+      />
       <Text style={[styles.statValue, highlight && styles.statValueHighlight]}>{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
+    </View>
+  );
+}
+
+function GuideItem({ Icon, text }: { Icon: LucideIcon; text: string }) {
+  return (
+    <View style={styles.guideItem}>
+      <Icon size={16} color={COLORS.primary} strokeWidth={2} />
+      <Text style={styles.guideText}>{text}</Text>
     </View>
   );
 }
@@ -170,8 +236,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   statCardHighlight: { borderColor: COLORS.primary },
-  statIcon: { fontSize: 18, marginBottom: 4 },
-  statValue: { fontSize: FONT_SIZE.xl, fontWeight: '800', color: COLORS.text },
+  statValue: { fontSize: FONT_SIZE.xl, fontWeight: '800', color: COLORS.text, marginTop: 4 },
   statValueHighlight: { color: COLORS.primary },
   statLabel: { fontSize: FONT_SIZE.xs, color: COLORS.textSecondary, marginTop: 2 },
 
@@ -202,18 +267,22 @@ const styles = StyleSheet.create({
     padding: SPACING.lg,
     gap: SPACING.sm,
   },
+  guideHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginBottom: SPACING.xs,
+  },
   guideHeader: {
     fontSize: FONT_SIZE.sm,
     fontWeight: '700',
     color: COLORS.text,
-    marginBottom: SPACING.xs,
   },
   guideItem: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: SPACING.sm,
   },
-  guideBullet: { fontSize: 14 },
   guideText: {
     flex: 1,
     fontSize: FONT_SIZE.sm,

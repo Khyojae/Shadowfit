@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { ChevronLeft, Plus, Clock } from 'lucide-react-native';
 import { COLORS, FONT_SIZE, SPACING, RADIUS } from '@/constants/Colors';
 
 interface Notice {
@@ -70,7 +70,7 @@ export default function NoticeScreen() {
     >
       <Text style={styles.cardTitle}>{item.title}</Text>
       <View style={styles.cardMeta}>
-        <FontAwesome name="clock-o" size={12} color={COLORS.textMuted} />
+        <Clock size={12} color={COLORS.textMuted} strokeWidth={2} />
         <Text style={styles.cardDate}>{item.date}</Text>
       </View>
     </TouchableOpacity>
@@ -81,11 +81,11 @@ export default function NoticeScreen() {
       {/* 헤더 */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}>
-          <FontAwesome name="chevron-left" size={16} color={COLORS.text} />
+          <ChevronLeft size={20} color={COLORS.text} strokeWidth={2} />
         </TouchableOpacity>
         <Text style={styles.title}>공지사항</Text>
         <TouchableOpacity onPress={() => setModalVisible(true)}>
-          <FontAwesome name="plus" size={18} color={COLORS.primary} />
+          <Plus size={20} color={COLORS.primary} strokeWidth={2} />
         </TouchableOpacity>
       </View>
 

@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { ChevronLeft, Mail, Key, Lock } from 'lucide-react-native';
 import { COLORS, FONT_SIZE, SPACING, RADIUS } from '@/constants/Colors';
 import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
@@ -132,7 +132,7 @@ export default function ResetPasswordScreen() {
               else setStep('code');
             }}
           >
-            <FontAwesome name="chevron-left" size={16} color={COLORS.text} />
+            <ChevronLeft size={20} color={COLORS.text} strokeWidth={2} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>비밀번호 재설정</Text>
           <View style={{ width: 16 }} />
@@ -173,7 +173,7 @@ export default function ResetPasswordScreen() {
             <>
               <Input
                 label="이메일"
-                icon="envelope"
+                icon={Mail}
                 placeholder="example@email.com"
                 value={email}
                 onChangeText={setEmail}
@@ -195,7 +195,7 @@ export default function ResetPasswordScreen() {
             <>
               <Input
                 label="인증 코드"
-                icon="key"
+                icon={Key}
                 placeholder="6자리 숫자 입력"
                 value={code}
                 onChangeText={setCode}
@@ -220,7 +220,7 @@ export default function ResetPasswordScreen() {
             <>
               <Input
                 label="새 비밀번호"
-                icon="lock"
+                icon={Lock}
                 placeholder="6자 이상 입력"
                 value={password}
                 onChangeText={setPassword}
@@ -230,7 +230,7 @@ export default function ResetPasswordScreen() {
               />
               <Input
                 label="새 비밀번호 확인"
-                icon="lock"
+                icon={Lock}
                 placeholder="비밀번호를 다시 입력"
                 value={passwordConfirm}
                 onChangeText={setPasswordConfirm}

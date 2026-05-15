@@ -1,10 +1,10 @@
-import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { Tabs } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Home, BarChart3, CirclePlay, User, type LucideIcon } from 'lucide-react-native';
 import { COLORS } from '@/constants/Colors';
 
-function TabIcon({ name, color }: { name: React.ComponentProps<typeof FontAwesome>['name']; color: string }) {
-  return <FontAwesome size={22} name={name} color={color} />;
+function TabIcon({ Icon, color }: { Icon: LucideIcon; color: string }) {
+  return <Icon size={22} color={color} strokeWidth={2} />;
 }
 
 export default function TabLayout() {
@@ -33,28 +33,28 @@ export default function TabLayout() {
         name="index"
         options={{
           title: '홈',
-          tabBarIcon: ({ color }) => <TabIcon name="home" color={color} />,
+          tabBarIcon: ({ color }) => <TabIcon Icon={Home} color={color} />,
         }}
       />
       <Tabs.Screen
         name="activity"
         options={{
           title: '활동',
-          tabBarIcon: ({ color }) => <TabIcon name="bar-chart" color={color} />,
+          tabBarIcon: ({ color }) => <TabIcon Icon={BarChart3} color={color} />,
         }}
       />
       <Tabs.Screen
         name="exercise"
         options={{
           title: '운동',
-          tabBarIcon: ({ color }) => <TabIcon name="play-circle" color={color} />,
+          tabBarIcon: ({ color }) => <TabIcon Icon={CirclePlay} color={color} />,
         }}
       />
       <Tabs.Screen
         name="mypage"
         options={{
           title: '마이',
-          tabBarIcon: ({ color }) => <TabIcon name="user" color={color} />,
+          tabBarIcon: ({ color }) => <TabIcon Icon={User} color={color} />,
         }}
       />
     </Tabs>

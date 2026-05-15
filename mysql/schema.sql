@@ -1,3 +1,6 @@
+-- 인코딩 강제 (한글 깨짐 방지). 클라이언트 charset이 latin1 이어도 utf8mb4 로 협상.
+SET NAMES utf8mb4;
+
 -- 1. 데이터베이스 생성 및 선택
 CREATE DATABASE IF NOT EXISTS shadowfit;
 USE shadowfit;

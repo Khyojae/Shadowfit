@@ -1,29 +1,45 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
-import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { useRouter, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  Dumbbell,
+  Timer,
+  Flame,
+  type LucideIcon,
+} from 'lucide-react-native';
 import { COLORS, FONT_SIZE, SPACING, RADIUS } from '@/constants/Colors';
-
-// TODO: API 연동 후 실제 데이터로 교체
-const MOCK_WEEKLY = {
-  range: '3월 23일 - 29일',
-  workouts: 4,
-  minutes: 35,
-  calories: 250,
-  exercises: [
-    { name: '숄더프레스', sets: 4, reps: 10, syncRate: 93 },
-    { name: '사이드레터럴레이즈', sets: 3, reps: 15, syncRate: 88 },
-    { name: '프론트레이즈', sets: 3, reps: 12, syncRate: 91 },
-    { name: '페이스풀', sets: 3, reps: 15, syncRate: 85 },
-  ],
-  dailyCalories: [250, 0, 0, 0, 0, 0, 0],
-  days: ['3월 23일', '3월 24일', '3월 25일', '3월 26일', '3월 27일', '3월 28일', '3월 29일'],
-};
+import { reportService } from '@/services/reportService';
+import type { WeeklyActivityResponse } from '@/types/report';
 
 export default function ActivityScreen() {
   const router = useRouter();
+  const [data, setData] = useState<WeeklyActivityResponse | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const maxCal = Math.max(...MOCK_WEEKLY.dailyCalories, 1);
+  useFocusEffect(
+    useCallback(() => {
+      setLoading(true);
+      reportService
+        .getWeeklySummary()
+        .then((res) => setData(res.data))
+        .catch((e) => {
+          console.error('[weekly-summary] status=', e.response?.status, 'data=', e.response?.data);
+        })
+        .finally(() => setLoading(false));
+    }, []),
+  );
+
+  const dailyLogs = data?.dailyLogs ?? [];
+  const maxMin = Math.max(...dailyLogs.map((d) => d.workoutMinutes), 1);
+  // 오늘 인덱스 (없으면 첫 번째 항목)
+  const todayIdx = dailyLogs.findIndex((d) => d.isToday);
+  const detailLabel =
+    todayIdx >= 0 && dailyLogs[todayIdx]
+      ? `${dailyLogs[todayIdx].dayOfWeek}요일 운동 상세`
+      : '오늘 운동 상세';
 
   return (
     <SafeAreaView style={styles.container}>
@@ -33,86 +49,101 @@ export default function ActivityScreen() {
           <Text style={styles.title}>Activity</Text>
         </View>
 
-        {/* 주간 네비게이션 */}
+        {/* 주간 네비게이션 (현재 주만 표시 - 추후 이전/다음 주 기능 확장) */}
         <View style={styles.weekNav}>
-          <TouchableOpacity><FontAwesome name="chevron-left" size={14} color={COLORS.textSecondary} /></TouchableOpacity>
-          <Text style={styles.weekRange}>{MOCK_WEEKLY.range}</Text>
-          <TouchableOpacity><FontAwesome name="chevron-right" size={14} color={COLORS.textSecondary} /></TouchableOpacity>
+          <TouchableOpacity disabled>
+            <ChevronLeft size={16} color={COLORS.textMuted} strokeWidth={2} />
+          </TouchableOpacity>
+          <Text style={styles.weekRange}>{data?.dateRange ?? '이번 주'}</Text>
+          <TouchableOpacity disabled>
+            <ChevronRight size={16} color={COLORS.textMuted} strokeWidth={2} />
+          </TouchableOpacity>
         </View>
 
-        {/* 주간 통계 */}
-        <View style={styles.statsRow}>
-          <WeeklyStat icon="💪" value={String(MOCK_WEEKLY.workouts)} label="Workouts" />
-          <WeeklyStat icon="⏱" value={String(MOCK_WEEKLY.minutes)} label="Min" />
-          <WeeklyStat icon="🔥" value={String(MOCK_WEEKLY.calories)} label="Kcal" />
-        </View>
-        <View style={styles.changeRow}>
-          <Text style={styles.changeText}>— 0%</Text>
-          <Text style={styles.changeText}>— 0%</Text>
-          <Text style={styles.changeText}>— 0%</Text>
-        </View>
-
-        {/* 운동일지 */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>운동일지</Text>
-
-          <View style={styles.summaryCard}>
-            <Text style={styles.summaryText}>
-              {MOCK_WEEKLY.workouts} Workouts   {MOCK_WEEKLY.minutes} Min   {MOCK_WEEKLY.calories} Kcal
-            </Text>
-            <FontAwesome name="chevron-right" size={12} color={COLORS.textMuted} />
+        {loading && !data ? (
+          <View style={styles.loadingBox}>
+            <ActivityIndicator color={COLORS.primary} />
           </View>
+        ) : (
+          <>
+            {/* 주간 통계 */}
+            <View style={styles.statsRow}>
+              <WeeklyStat Icon={Dumbbell} value={String(data?.totalWorkouts ?? 0)} label="Workouts" />
+              <WeeklyStat Icon={Timer} value={String(data?.totalMinutes ?? 0)} label="Min" />
+              <WeeklyStat Icon={Flame} value={String(data?.totalCalories ?? 0)} label="Kcal" />
+            </View>
 
-          {/* 바 차트 */}
-          <View style={styles.chartContainer}>
-            {MOCK_WEEKLY.dailyCalories.map((cal, i) => (
-              <View key={i} style={styles.chartCol}>
-                <View style={styles.barWrapper}>
-                  <View
-                    style={[
-                      styles.bar,
-                      {
-                        height: cal > 0 ? Math.max((cal / maxCal) * 80, 8) : 0,
-                      },
-                    ]}
-                  />
-                </View>
-                <Text style={styles.chartLabel}>{MOCK_WEEKLY.days[i]}</Text>
-              </View>
-            ))}
-          </View>
-        </View>
+            {/* 운동일지 */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>운동일지</Text>
 
-        {/* 운동 상세 */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>
-            {MOCK_WEEKLY.days[0]} 운동 상세
-          </Text>
-          {MOCK_WEEKLY.exercises.map((ex) => (
-            <View key={ex.name} style={styles.exerciseCard}>
-              <View style={styles.exerciseInfo}>
-                <Text style={styles.exerciseName}>{ex.name}</Text>
-                <Text style={styles.exerciseSets}>{ex.sets}세트 × {ex.reps}회</Text>
-              </View>
-              <View style={styles.syncBadge}>
-                <Text style={[styles.syncValue, { color: getSyncColor(ex.syncRate) }]}>
-                  {ex.syncRate}%
+              <View style={styles.summaryCard}>
+                <Text style={styles.summaryText}>
+                  {data?.totalWorkouts ?? 0} Workouts   {data?.totalMinutes ?? 0} Min   {data?.totalCalories ?? 0} Kcal
                 </Text>
-                <Text style={styles.syncLabel}>싱크로율</Text>
+                <ChevronRight size={14} color={COLORS.textMuted} strokeWidth={2} />
+              </View>
+
+              {/* 바 차트 - dailyLogs 기준 */}
+              <View style={styles.chartContainer}>
+                {dailyLogs.length === 0 ? (
+                  <Text style={styles.emptyText}>이번 주 운동 기록이 없습니다</Text>
+                ) : (
+                  dailyLogs.map((d, i) => (
+                    <View key={i} style={styles.chartCol}>
+                      <View style={styles.barWrapper}>
+                        <View
+                          style={[
+                            styles.bar,
+                            {
+                              height: d.workoutMinutes > 0
+                                ? Math.max((d.workoutMinutes / maxMin) * 80, 8)
+                                : 0,
+                              backgroundColor: d.isToday ? COLORS.warning : COLORS.primary,
+                            },
+                          ]}
+                        />
+                      </View>
+                      <Text style={[styles.chartLabel, d.isToday && styles.chartLabelToday]}>
+                        {d.dayOfWeek}
+                      </Text>
+                    </View>
+                  ))
+                )}
               </View>
             </View>
-          ))}
-        </View>
 
-        {/* 보고서 버튼 */}
-        <TouchableOpacity
-          style={styles.reportBtn}
-          onPress={() => router.push('/report/1' as any)}
-          activeOpacity={0.8}
-        >
-          <FontAwesome name="file-text-o" size={16} color={COLORS.black} />
-          <Text style={styles.reportBtnText}>운동 보고서 보기</Text>
-        </TouchableOpacity>
+            {/* 운동 상세 */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>{detailLabel}</Text>
+              {(data?.todayDetails ?? []).length === 0 ? (
+                <View style={styles.emptyCard}>
+                  <Text style={styles.emptyText}>오늘 운동 기록이 없습니다</Text>
+                </View>
+              ) : (
+                data!.todayDetails.map((ex) => (
+                  <TouchableOpacity
+                    key={ex.sessionId}
+                    style={styles.exerciseCard}
+                    activeOpacity={0.7}
+                    onPress={() => router.push(`/report/${ex.sessionId}` as any)}
+                  >
+                    <View style={styles.exerciseInfo}>
+                      <Text style={styles.exerciseName}>{ex.exerciseName}</Text>
+                      <Text style={styles.exerciseSets}>{ex.setSummary}</Text>
+                    </View>
+                    <View style={styles.syncBadge}>
+                      <Text style={[styles.syncValue, { color: getSyncColor(ex.syncRate) }]}>
+                        {Math.round(ex.syncRate)}%
+                      </Text>
+                      <Text style={styles.syncLabel}>싱크로율</Text>
+                    </View>
+                  </TouchableOpacity>
+                ))
+              )}
+            </View>
+          </>
+        )}
 
         <View style={{ height: 80 }} />
       </ScrollView>
@@ -120,19 +151,20 @@ export default function ActivityScreen() {
   );
 }
 
-function WeeklyStat({ icon, value, label }: { icon: string; value: string; label: string }) {
+function WeeklyStat({ Icon, value, label }: { Icon: LucideIcon; value: string; label: string }) {
   return (
     <View style={styles.statCard}>
-      <Text style={styles.statIcon}>{icon}</Text>
+      <Icon size={18} color={COLORS.primary} strokeWidth={2} />
       <Text style={styles.statValue}>{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
     </View>
   );
 }
 
+// 싱크로율 색상 구간: 80%+ 정석 / 60~80% 교정 필요 / <60% 부상 위험
 function getSyncColor(rate: number) {
-  if (rate >= 90) return COLORS.primary;
-  if (rate >= 80) return COLORS.warning;
+  if (rate >= 80) return COLORS.primary;
+  if (rate >= 60) return COLORS.warning;
   return COLORS.error;
 }
 
@@ -164,22 +196,8 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
     alignItems: 'center',
   },
-  statIcon: { fontSize: 16, marginBottom: 4 },
-  statValue: { fontSize: FONT_SIZE.xxl, fontWeight: '800', color: COLORS.text },
+  statValue: { fontSize: FONT_SIZE.xxl, fontWeight: '800', color: COLORS.text, marginTop: 4 },
   statLabel: { fontSize: FONT_SIZE.xs, color: COLORS.textSecondary, marginTop: 2 },
-
-  changeRow: {
-    flexDirection: 'row',
-    paddingHorizontal: SPACING.xxl,
-    marginTop: SPACING.xs,
-    gap: SPACING.md,
-  },
-  changeText: {
-    flex: 1,
-    textAlign: 'center',
-    fontSize: FONT_SIZE.xs,
-    color: COLORS.textMuted,
-  },
 
   section: { paddingHorizontal: SPACING.xxl, marginTop: SPACING.xxl },
   sectionTitle: { fontSize: FONT_SIZE.lg, fontWeight: '700', color: COLORS.text, marginBottom: SPACING.md },
@@ -211,7 +229,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
     borderRadius: 4,
   },
-  chartLabel: { fontSize: 9, color: COLORS.textMuted, marginTop: 4 },
+  chartLabel: { fontSize: 11, color: COLORS.textMuted, marginTop: 4 },
+  chartLabelToday: { color: COLORS.warning, fontWeight: '700' },
 
   exerciseCard: {
     flexDirection: 'row',
@@ -231,16 +250,20 @@ const styles = StyleSheet.create({
   syncValue: { fontSize: FONT_SIZE.xl, fontWeight: '800' },
   syncLabel: { fontSize: FONT_SIZE.xs, color: COLORS.textSecondary },
 
-  reportBtn: {
-    flexDirection: 'row',
+  loadingBox: {
+    paddingVertical: SPACING.xxxl,
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.sm,
-    backgroundColor: COLORS.primary,
-    marginHorizontal: SPACING.xxl,
-    marginTop: SPACING.xxl,
-    paddingVertical: SPACING.lg,
-    borderRadius: RADIUS.md,
   },
-  reportBtnText: { fontSize: FONT_SIZE.md, fontWeight: '700', color: COLORS.black },
+  emptyText: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textMuted,
+    textAlign: 'center',
+    paddingVertical: SPACING.xl,
+  },
+  emptyCard: {
+    backgroundColor: COLORS.card,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+  },
 });

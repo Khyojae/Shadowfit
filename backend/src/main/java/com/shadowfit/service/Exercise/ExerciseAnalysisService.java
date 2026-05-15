@@ -4,7 +4,6 @@ import com.shadowfit.dto.exercises.VideoRequestDto;
 import com.shadowfit.dto.exercises.session.SessionUpdateRequestDto;
 import com.shadowfit.global.error.BusinessException;
 import com.shadowfit.global.error.ErrorCode;
-import com.shadowfit.global.util.YoutubeValidator;
 import com.shadowfit.grpc.*;
 import com.shadowfit.model.exercise.Exercise;
 import com.shadowfit.model.exercise.ExerciseReference;
@@ -16,7 +15,6 @@ import com.shadowfit.repository.exercise.ExercisesRepository;
 import com.shadowfit.repository.member.MemberRepository;
 import com.shadowfit.repository.exercise.SessionRepository;
 import io.grpc.Metadata;
-import io.grpc.stub.MetadataUtils;
 import io.grpc.stub.StreamObserver;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,7 +27,6 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
-import io.grpc.stub.MetadataUtils;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -143,7 +140,7 @@ public class ExerciseAnalysisService {
         AnalyzeRequest.Builder requestBuilder = AnalyzeRequest.newBuilder()
                 .setExerciseId(appDto.getExerciseId())
                 .setSessionId(sessionId)
-                .setReferenceSource(YoutubeValidator.extractId(finalUrl));
+                .setReferenceSource(finalUrl);
 
         for (ExerciseReference ref : referencePoses) {
             requestBuilder.addReferencePoses(PoseDataRequest.newBuilder()

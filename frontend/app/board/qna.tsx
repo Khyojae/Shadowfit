@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { ChevronLeft, Plus, Clock, Lock, Unlock } from 'lucide-react-native';
 import { COLORS, FONT_SIZE, SPACING, RADIUS } from '@/constants/Colors';
 
 interface QnAItem {
@@ -82,10 +82,10 @@ export default function QnAScreen() {
     >
       <View style={styles.cardRow}>
         {item.isSecret && (
-          <FontAwesome
-            name="lock"
+          <Lock
             size={14}
             color={item.answered ? COLORS.primary : COLORS.textMuted}
+            strokeWidth={2}
           />
         )}
         <Text style={styles.cardTitle} numberOfLines={1}>
@@ -93,7 +93,7 @@ export default function QnAScreen() {
         </Text>
       </View>
       <View style={styles.cardMeta}>
-        <FontAwesome name="clock-o" size={12} color={COLORS.textMuted} />
+        <Clock size={12} color={COLORS.textMuted} strokeWidth={2} />
         <Text style={styles.cardDate}>{item.date}</Text>
         {item.answered && (
           <View style={styles.answeredBadge}>
@@ -109,11 +109,11 @@ export default function QnAScreen() {
       {/* 헤더 */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}>
-          <FontAwesome name="chevron-left" size={16} color={COLORS.text} />
+          <ChevronLeft size={20} color={COLORS.text} strokeWidth={2} />
         </TouchableOpacity>
         <Text style={styles.title}>Q&A</Text>
         <TouchableOpacity onPress={() => setModalVisible(true)}>
-          <FontAwesome name="plus" size={18} color={COLORS.primary} />
+          <Plus size={20} color={COLORS.primary} strokeWidth={2} />
         </TouchableOpacity>
       </View>
 
@@ -134,7 +134,7 @@ export default function QnAScreen() {
           <View style={styles.modalContent}>
             <View style={styles.cardRow}>
               {selectedItem?.isSecret && (
-                <FontAwesome name="lock" size={14} color={COLORS.textMuted} />
+                <Lock size={14} color={COLORS.textMuted} strokeWidth={2} />
               )}
               <Text style={styles.modalTitle}>{selectedItem?.title}</Text>
             </View>
@@ -195,11 +195,11 @@ export default function QnAScreen() {
               onPress={() => setIsSecret(!isSecret)}
               activeOpacity={0.7}
             >
-              <FontAwesome
-                name={isSecret ? 'lock' : 'unlock-alt'}
-                size={14}
-                color={isSecret ? COLORS.primary : COLORS.textMuted}
-              />
+              {isSecret ? (
+                <Lock size={14} color={COLORS.primary} strokeWidth={2} />
+              ) : (
+                <Unlock size={14} color={COLORS.textMuted} strokeWidth={2} />
+              )}
               <Text
                 style={[
                   styles.secretText,

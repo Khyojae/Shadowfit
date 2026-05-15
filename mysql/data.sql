@@ -1,3 +1,6 @@
+-- 인코딩 강제 (한글 깨짐 방지). 클라이언트 charset이 latin1 이어도 utf8mb4 로 협상.
+SET NAMES utf8mb4;
+
 -- 1. 기존 데이터 및 테이블 정리
 SET FOREIGN_KEY_CHECKS = 0;
 DROP TABLE IF EXISTS body_records, reports, daily_logs, pose_data, exercise_sessions, exercise_references, exercises, users;
