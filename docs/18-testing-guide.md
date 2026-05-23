@@ -164,7 +164,97 @@ CI 도입은 [`decisions/`](./decisions/) 에 별도 결정 문서로 다룰 만
 
 ---
 
-## 8. AI 서버 (Python) 테스트
+## 8. 수동 e2e 검증 절차 (스쿼트 1사이클)
+
+코드 정적 분석으로는 보장 못 하는 결합 상태를 한 번에 검증. 카메라 + 프론트 + AI + Spring + MySQL 전부 띄운 상태에서 진행.
+
+### 8.1 사전 준비
+
+```bash
+# 1) Docker 컨테이너 기동
+docker compose up -d --build
+docker compose ps                  # mysql 'healthy', backend·ai 'Up'
+
+# 2) DB 상태 초기화 확인 (필요 시)
+docker exec -it shadowfit-mysql mysql -u shadowfit -p shadowfit -e "
+  SELECT COUNT(*) AS sessions FROM exercise_sessions;
+  SELECT COUNT(*) AS poses FROM pose_data;
+"
+
+# 3) 프론트 기동 (별도 터미널)
+cd frontend && npx expo start
+```
+
+### 8.2 한 사이클 — 검증 포인트
+
+| 단계 | 동작 | 검증 |
+|------|------|------|
+| 1 | 로그인 → JWT 발급 | `Authorization: Bearer ...` 보유 |
+| 2 | 운동 화면 진입, "스쿼트" 선택 → 시작 버튼 | `POST /exercises/sessions` 호출, 응답 `{sessionId, status:IN_PROGRESS}` |
+| 3 | 카메라 켜짐, 스쿼트 5회 천천히 수행 | 프론트가 프레임마다 `POST /pose` 호출 (네트워크 탭 확인) |
+| 4 | rep 1 완성 시점 | Spring 로그에 `[AI → Spring] PoseData 배치 전송 (session=X, count=N, success=true)` |
+| 5 | 5 rep 완료 후 종료 버튼 | `PUT /exercises/sessions/{id}/stop` 호출, 즉시 202 |
+| 6 | 종료 후 1~2초 | Spring 로그에 `[AI → Spring] CompleteAnalysis 성공 (session=X, status=COMPLETED, attempt=1)` |
+
+### 8.3 DB 검증 (운동 끝난 직후)
+
+```sql
+-- 1. 세션 상태
+SELECT id, status, total_reps, avg_sync_rate, max_sync_rate, min_sync_rate, start_time, end_time, version
+FROM exercise_sessions
+ORDER BY id DESC LIMIT 1;
+-- 기대: status=COMPLETED, total_reps>=1, end_time 채워짐, version>=1
+
+-- 2. rep 단위 포즈 데이터
+SELECT session_id, COUNT(*) AS frame_count, MIN(sync_rate) AS min_sr, MAX(sync_rate) AS max_sr, MIN(timestamp_sec) AS first_t, MAX(timestamp_sec) AS last_t
+FROM pose_data
+WHERE session_id = (SELECT MAX(id) FROM exercise_sessions);
+-- 기대: frame_count > 0, sync_rate 값 채워짐, timestamp_sec 시계열 형성
+
+-- 3. 피드백 발화 로그 (TTS 사용 시)
+SELECT session_id, feedback_type, sync_rate_at_trigger, occurred_at
+FROM session_feedback_logs
+WHERE session_id = (SELECT MAX(id) FROM exercise_sessions)
+ORDER BY occurred_at;
+-- 기대: 발화된 피드백이 있다면 N행
+```
+
+### 8.4 자동 통합 테스트로 같은 흐름 검증
+
+Spring 측 `backend/src/test/java/com/shadowfit/integration/ExerciseSessionFlowIntegrationTest.java` 에 위 시퀀스의 자동화 버전이 있음. AI 서버는 mock 으로 대체, 콜백을 직접 시뮬레이션.
+
+```bash
+./gradlew test --tests "ExerciseSessionFlowIntegrationTest"
+```
+
+수동 e2e 와 자동 테스트의 역할 분리:
+- **자동 테스트**: Spring 측 결합·DB 상태·동시성·멱등성 로직 — 코드 변경 시 자동 회귀 검증
+- **수동 e2e**: 프론트 ↔ AI ↔ Spring 의 실제 통신·카메라·MediaPipe·gRPC 채널 — 사람이 한 번 돌려봐야 보이는 것
+
+### 8.5 실패 시나리오 점검 체크리스트
+
+수동 e2e 한 번 더 돌려서 비정상 경로도 확인 권장:
+
+- [ ] 종료 버튼 누르기 전에 앱 강제 종료 → 1분 후 스케줄러가 `status=FAILED` 로 떨어뜨리는지 확인
+- [ ] AI 컨테이너를 운동 중 죽이기 (`docker compose stop shadowfit-ai`) → 콜백 안 옴 → 타임아웃까지 IN_PROGRESS → FAILED 전환 확인
+- [ ] AI 컨테이너 복귀 후 같은 sessionId 로 콜백이 늦게 와도 멱등성으로 처리 (FAILED → COMPLETED 덮어쓰기) 확인
+- [ ] 같은 session 에 동시에 `/stop` 두 번 → 한 번만 처리, OptimisticLock 충돌 시 재시도 동작
+
+자세한 시나리오는 [`15-session-timeout-guide.md`](./15-session-timeout-guide.md) §🔒 동시성 / §🔁 멱등성 참조.
+
+### 8.6 트러블슈팅
+
+| 증상 | 원인 후보 | 확인 |
+|------|---------|------|
+| `pose_data` 빈 채로 끝남 | 프론트가 `POST /pose` 안 부름 | 프론트 네트워크 탭, `frontend/app/(tabs)/exercise.tsx` 카메라 프레임 송신 코드 |
+| `status=IN_PROGRESS` 영원히 | AI 콜백 영구 실패 (3회 재시도 후) | `docker logs shadowfit-ai` 의 ERROR 로그, gRPC 채널·토큰 확인 |
+| `UNAUTHENTICATED` gRPC 에러 | 양쪽 `INTERNAL_API_TOKEN` 불일치 | `.env` 의 토큰 vs 두 컨테이너 환경변수 |
+| `status=FAILED` 즉시 떨어짐 | `expectedDurationMinutes` 가 너무 짧음 | `SELECT name, expected_duration_minutes FROM exercises` |
+| 프론트가 `/complete` 부름 | 옛 디프리케이트 경로 미마이그레이션 | 프론트 종료 버튼 핸들러 (`exercise.tsx`) |
+
+---
+
+## 9. AI 서버 (Python) 테스트
 
 코드상 디렉터리는 있지만 본 가이드 범위 밖. AI 측 테스트 변경은 [`feedback-minimize-python-changes`](../../C:/Users/khjae/.claude/projects/E--init/memory/feedback_minimize_python_changes.md) 정책에 따라 원작자 영역.
 
