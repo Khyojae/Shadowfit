@@ -354,6 +354,169 @@
 
 ---
 
+## BE-13 — TTS 피드백 템플릿 페르소나 분기 적용
+
+**우선**: 🟡 | **추정**: 2.5h | **의존**: 없음 (지금 시작 가능) | **상태**: 📋
+
+배경: [`../decisions/tts-design.md`](../decisions/tts-design.md) §11.3 갱신 11, [`../handoff/tts-negotiation-checklist.md`](../handoff/tts-negotiation-checklist.md) #1·12·13·24. 기존 TTS 도메인(커밋 `2f48526`)은 페르소나 무관 단일 멘트만 제공. 분기 4-A + 페르소나 시스템([`../12-persona-difficulty.md`](../12-persona-difficulty.md)) 결합 시 토큰의 `selectedPersona` 로 자동 필터링되어야 함.
+
+### 현재 상태
+- ✅ `Member.selectedPersona` (enum BEGINNER/ADVANCED/DIET/REHAB, default BEGINNER) — `model/member/Member.java:36`
+- ✅ `ExerciseFeedbackTemplate` 엔티티 + `(exercise_id, feedback_type)` uniqueKey — `model/exercise/ExerciseFeedbackTemplate.java`
+- ✅ `FeedbackTemplateController.getTemplates(exerciseId)` — `controller/FeedbackTemplateController.java`
+- ✅ seed 데이터 (스쿼트 4건 등) — `mysql/data.sql:130-147` (모두 페르소나 무관 단일 멘트)
+- ❌ `ExerciseFeedbackTemplate.persona` 컬럼 없음
+- ❌ 페르소나별 16 row seed 없음
+- ❌ Controller 의 페르소나 자동 필터링 없음
+
+### 만질 파일
+1. `mysql/schema.sql:120-128` + `mysql/data.sql:79-87` — `exercise_feedback_templates` 테이블에 `persona VARCHAR(10) NULL` 컬럼 추가, uniqueKey 를 `(exercise_id, feedback_type, persona)` 로 변경. `persona IS NULL` row 는 *공통 fallback* 의미
+2. `model/exercise/ExerciseFeedbackTemplate.java` — `@Enumerated SelectedPersona persona` 필드 + uniqueConstraint 갱신 (~10줄)
+3. `repository/exercise/ExerciseFeedbackTemplateRepository.java` — `findByExerciseAndPersonaWithFallback(exercise, persona)` 신설. 페르소나 row 가 있으면 그것, 없으면 `persona IS NULL` fallback 반환 (~15줄)
+4. `service/Exercise/FeedbackTemplateService.java` — 토큰의 사용자 → `selectedPersona` 조회 → repo 호출 (~10줄)
+5. `controller/FeedbackTemplateController.java` — `@AuthenticationPrincipal` 추가, service 위임 (~5줄)
+6. `mysql/data.sql` — 스쿼트 4 결함 × 4 페르소나 = 16 row seed (스쿼트만 우선, 런지·플랭크는 후속) (~20줄)
+   - 12-persona-difficulty.md 의 페르소나별 톤 가이드 활용
+
+### 완료 기준
+- `GET /exercises/1/feedback-templates` 호출 시 토큰의 사용자 페르소나(예: HEALCHANG) 에 맞는 4건 반환
+- 페르소나 변경(`PATCH /users/me/persona`) 후 다음 호출 시 새 페르소나 멘트 반환
+- 페르소나 row 가 없는 운동은 `persona IS NULL` fallback 반환 (런지·플랭크 — 후속 작업까지 호환)
+- 단위 테스트 — 4 페르소나 × 1 호출 = 4 응답 검증
+
+### 리스크/의존
+
+협의 안건 — 상세는 [`../handoff/tts-negotiation-checklist.md`](../handoff/tts-negotiation-checklist.md) 의 "BE 작업별 협의 매핑 → BE-13" 및 "각 안건 상세 설명" 참조.
+
+| 안건 | 누구와 | 시점 | 차단? |
+|---|:-:|:-:|:-:|
+| **#1 8종 enum 표기 master** — `FeedbackType.java` ↔ `REQUIREMENTS.md` §6 정합 | 3자 | 작업 전 | 🔴 |
+| **#2 페르소나 enum 표기 master** — `SelectedPersona` ↔ `12-persona-difficulty.md` 정합 | 3자 | 작업 전 | 🔴 |
+| **#12 응답 구조** — Map vs Array (Array 권장) | Front | 작업 중 | 🟡 |
+| **#13 캐시 무효화** — `PATCH /users/me/persona` 후 클라 reload 신호 | Front | 작업 중 | 🟡 |
+| **#24 빈 결과 처리** — `persona IS NULL` fallback (repo 의 fallback 쿼리 정합) | Front | 작업 중 | 🟡 |
+| **#25 priority 응답 메타** — 클라 미사용 → 제외 권장 | Front | 작업 중 | 🟢 |
+| **#28 enum 추가 시 배포 순서** — Spring → AI → Front | 3자 | 운영 단계 | 🟢 |
+
+기타:
+- seed 데이터의 멘트 문구 — `12-persona-difficulty.md` 의 톤 가이드 참고하되 *짧은 명령형* 으로 통일 ([`../decisions/tts-design.md`](../decisions/tts-design.md) 분기 8 가치 3 "인지" 정합)
+- 기존 `data.sql:130-134` 의 스쿼트 4건이 *페르소나 무관 단일 멘트* 라 — 새 schema 에서는 `persona IS NULL` 로 INSERT 하여 fallback row 로 보존하거나, 4 페르소나 row 로 분할 후 폐기
+
+---
+
+## BE-14 — Session 종료 endpoint (분기 2.A.ET ET-A)
+
+**우선**: 🔴 | **추정**: 1.5h | **의존**: 없음 | **상태**: 📋
+
+배경: [`../decisions/tts-design.md`](../decisions/tts-design.md) 분기 2.A.ET. 클라가 "운동 종료" 버튼 누르면 *Spring 에 종료 시각 기록* + *AI 에 batch 송신 trigger* 양쪽에 통보. Spring 측은 `endTime` 갱신만 담당. AI batch 송신은 AI 가 별도 수신·처리 (handoff `ai-tts-feedback-batch.md` §2.F).
+
+### 현재 상태
+- ✅ `Session.endTime` 컬럼 존재 — `model/exercise/Session.java:40`
+- ❌ `PATCH /sessions/{id}/end` endpoint 없음 (`grep "endSession\|sessions.*end\|endedAt"` 결과 0건)
+
+### 만질 파일
+1. `controller/SessionController.java` (또는 기존 컨트롤러) — `PATCH /sessions/{id}/end` 추가 (~15줄)
+2. `service/Exercise/SessionService.java` — `endSession(sessionId, member)` 메서드. 권한 검증 (본인 session 인가) + `endTime = LocalDateTime.now()` 또는 클라 전달 값 + 통계 컬럼 (`avgSyncRate` 등) 갱신 트리거 (~10줄)
+3. `dto/session/SessionEndDto.java` (선택) — body 가 필요한 경우만
+
+### 완료 기준
+- `PATCH /sessions/{id}/end` 호출 시 `Session.endTime` 갱신
+- 본인 session 아니면 403
+- 이미 종료된 session 재호출 시 멱등 (200 OK, 변경 없음)
+
+### 리스크/의존
+
+협의 안건 — 상세는 [`../handoff/tts-negotiation-checklist.md`](../handoff/tts-negotiation-checklist.md) 의 "BE 작업별 협의 매핑 → BE-14" 및 "각 안건 상세 설명" 참조.
+
+| 안건 | 누구와 | 시점 | 차단? |
+|---|:-:|:-:|:-:|
+| **#5 인증·토큰 endpoint 분리** — `/api/*` JWT / `/internal/*` `X-Internal-Token` | 3자 | 작업 전 | 🔴 |
+| **#7 클라 양방향 호출 순서** — Spring + AI 양쪽 호출, `Promise.all` 동시 권장, 부분 실패 허용 | Front | 작업 전 | 🔴 |
+| **#6 (AI 측) 종료 신호 형식** — *Spring 무관* (AI ↔ Front 사이). 클라가 양쪽 호출하는 것만 알아두면 됨 | AI ↔ Front | 병행 | 🟡 |
+| **#16 시간대 형식** — `endTime` ISO 8601 + `+09:00`. body 의 `endedAt` 받지 말고 *서버 시각 권위* 권장 (보안·일관성) | 3자 | 작업 중 | 🟡 |
+
+기타:
+- 통계 갱신 (`avgSyncRate`, `totalReps`) — 종료 시점이 적합한가? AI 가 보내는 batch 와 데이터 일관성. 일단 endpoint 는 *시각만 기록*, 통계는 별도 갱신 흐름 유지
+- 이미 종료된 session 재호출 시 멱등 (200 OK, `endTime` 미변경)
+
+---
+
+## BE-15 — 세션 피드백 조회 API
+
+**우선**: 🟡 | **추정**: 2.5h | **의존**: 없음 (기존 `SessionFeedbackLog` 활용) | **상태**: 📋
+
+배경: [`../decisions/tts-design.md`](../decisions/tts-design.md) §11.1.C. 리포트 화면에서 세션의 결함 패턴 조회. BE-30 (LLM 효과 분석) 의 데이터 소스이기도 함.
+
+### 현재 상태
+- ✅ `SessionFeedbackLog` 엔티티 + 인덱스 `(session_id, occurred_at)` — `model/exercise/SessionFeedbackLog.java`
+- ✅ AI 가 세션 종료 시 batch 송신 → `FeedbackLogService.saveBatch` 로 적재 (커밋 `2f48526`)
+- ❌ 조회 API 없음 — `GET /sessions/{id}/feedbacks`, `feedback-summary` 둘 다 미구현
+
+### 만질 파일
+1. `controller/SessionFeedbackController.java` 신설 (~40줄)
+   - `GET /sessions/{id}/feedbacks` — events 리스트, 페이징 옵션
+   - `GET /sessions/{id}/feedback-summary` — feedback_type 별 카운트 + sync_rate 통계
+2. `service/Exercise/SessionFeedbackQueryService.java` 신설 (~30줄)
+3. `repository/exercise/SessionFeedbackLogRepository.java` — `findBySessionIdOrderByOccurredAtAsc`, 집계 쿼리 (~10줄)
+4. `dto/session/SessionFeedbackResponseDto.java`, `SessionFeedbackSummaryDto.java` (~20줄)
+
+### 완료 기준
+- `GET /sessions/{id}/feedbacks` → 결함 이벤트 리스트 반환 (occurred_at 오름차순)
+- `GET /sessions/{id}/feedback-summary` → 결함별 카운트 + 평균/최소/최대 sync_rate
+- 본인·트레이너 권한 검증
+- 단위 테스트 — 합성 SessionFeedbackLog 로 집계 결과 검증
+
+### 리스크/의존
+
+협의 안건 — 상세는 [`../handoff/tts-negotiation-checklist.md`](../handoff/tts-negotiation-checklist.md) 의 "BE 작업별 협의 매핑 → BE-15" 및 "각 안건 상세 설명" 참조.
+
+| 안건 | 누구와 | 시점 | 차단? |
+|---|:-:|:-:|:-:|
+| **#1 8종 enum 표기** — 응답에 `feedbackType` 포함 (BE-13 과 동시 미팅에서 일괄) | 3자 | 작업 전 | 🔴 |
+| **#16 시간대 형식** — `occurredAt` 응답 표기 (BE-14 와 동시) | 3자 | 작업 전 | 🔴 |
+| **#17 summary 집계 단위** — `feedback_type` 별 카운트 + sync_rate avg/min/max 권장 | Front | 작업 중 | 🟡 |
+| **#19 트레이너 권한 헤더** — 기존 권한 모듈 (JWT role 클레임) 재사용 | S 단독 | 작업 중 | 🟡 |
+| **#18 events 페이징** — rep 30 × 결함 7 ≈ 210건 가능. *MVP 는 단순 list*, 운영 시 페이징 도입 | Front | 차순위 | 🟢 |
+
+기타:
+- 결함 수 많을 때 (rep 30 × 결함 7 ≈ 210건) 페이징 필요할 수 있음 — MVP 는 단순 list 후 운영 시 페이징 도입
+
+---
+
+## BE-30 — TTS 피드백 효과 분석 (선택, 포폴 어필용)
+
+**우선**: 🟢 | **추정**: 4h | **의존**: BE-07 (패턴 분석) 와 묶기 권장 | **상태**: 📋
+
+### 현재 상태
+- 📁 TTS 도메인 자체는 완성 (2f48526, 2026-05-09) — `PreferenceController`, `FeedbackTemplateController`, `InternalFeedbackController`, `SessionFeedbackLog`, `PreferenceService` 등 8개 파일
+- ✅ FastAPI 가 세션 종료 시 `POST /internal/feedback/batch` 로 발화 이벤트 배치 송신 → `SessionFeedbackLog` 저장
+- ❌ 저장된 발화 이벤트가 분석되지 않음 — 단순 로그만
+
+### 만질 파일
+1. `service/Analysis/FeedbackEffectAnalysisService.java` 신설
+   - 사용자별: TTS 활성화 vs 비활성화 그룹 syncRate 평균 비교
+   - 운동별: 특정 피드백 멘트 (`feedbackType`) 가 자주 발화된 세션 vs 안 발화된 세션의 다음 세션 syncRate 변화
+   - 멘트별: 발화 횟수 → 다음 rep syncRate 개선도 상관관계
+2. `controller/admin/AdminAnalyticsController.java` 또는 BE-05 의 `AdminDashboardController` 에 추가
+   - `GET /admin/analytics/feedback-effect` — 위 3가지 지표 응답
+3. `repository/exercise/SessionFeedbackLogRepository.java` — 집계 쿼리 메서드 추가
+
+### 완료 기준
+- 관리자 endpoint 1개로 3가지 지표 응답
+- 4주치 데이터로 의미 있는 결과 (TTS 그룹 vs 비TTS 그룹 syncRate 차이 ≥ 1% 정도면 어필 가능)
+
+### 리스크/의존
+- **데이터 축적 4주 이상 필요** — BE-07 와 같은 시점
+- 통계적 유의성 약함 (베타 사용자 5~10명) — 면접에서 "샘플 크기 의식했다" 고 답할 수 있어야 함
+- TTS 그룹과 비TTS 그룹의 사용자 특성 차이 (confounding) — 단순 A/B 가 아님을 의식
+
+### 포폴 어필 가치
+- "데이터 기반 기능 효과 검증" — 신입에 드문 시그널
+- BE-03 (LLM 리포트) 도입 후엔 LLM 리포트 효과 측정으로 확장 가능 (같은 패턴)
+- 면접 답변: "내가 만든 기능이 사용자에게 효과 있는지 측정해봤다 — 가설/방법/결과/한계" 4단 회고
+
+---
+
 ## 권장 시작 순서
 
 **1주차 (시연 직결, H2 채택의 결과)**:
@@ -370,6 +533,7 @@
 7. **BE-06** (Goal)
 8. **BE-12** (Outbox 패턴 — 운영 단계 신뢰성)
 9. **BE-07** → **BE-08** (패턴 → 추천, 데이터 충분해진 후)
+10. **BE-30** (TTS 피드백 효과 분석 — BE-07 와 같은 시점에 묶기)
 
 **폐기·보류**:
 - ~~BE-01~~ 🗑️ 폐기 (H2 채택)
