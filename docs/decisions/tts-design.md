@@ -113,10 +113,10 @@
 POST /internal/feedback/batch
 Header: X-Internal-Token: ***
 {
-  "sessionId": 123,
+  "session_id": 123,
   "events": [
-    { "feedbackType": "KNEE_OUT", "syncRateAtTrigger": 52.3, "occurredAt": "2026-05-25T10:23:45+09:00" },
-    { "feedbackType": "BACK_BENT", "syncRateAtTrigger": 48.1, "occurredAt": "2026-05-25T10:24:12+09:00" }
+    { "feedback_type": "KNEE_OUT", "sync_rate_at_trigger": 52.3, "occurred_at": "2026-05-25T10:23:45+09:00" },
+    { "feedback_type": "BACK_BENT", "sync_rate_at_trigger": 48.1, "occurred_at": "2026-05-25T10:24:12+09:00" }
   ]
 }
 ```
@@ -149,6 +149,125 @@ Header: X-Internal-Token: ***
         └─ POST  /sessions/{id}/end  → AI    (batch 송신 trigger)
                                             └─ POST /internal/feedback/batch → Spring
   ```
+
+### 2.A.BT 송신 trigger 시점 — *세션 전체에 1회인가 분할인가?* → 추천 **BT-SET (세트 경계 batch + 세션 종료 final)**
+
+분기 2-A 가 *송신 주체는 AI* 로 결정했으나, *송신 시점* 이 세션 종료 1회만으로 충분한가는 별도 검토 필요. 강제 종료 / AI 크래시 / 네트워크 단절 시 *전체 세션 손실* 위험.
+
+| 옵션 | trigger | 세션당 호출 | 손실 최대 | 요구사항 §5 정합 | 비고 |
+|------|------|:--:|:--:|:--:|------|
+| BT-NONE | 세션 종료 1회 (현행) | 1 | 전체 세션 | ✅ | 단순. 강제 종료 시 큰 손실 |
+| BT-REP | 매 rep 즉시 송신 | ~30 | 0 | ❌ 위반 | Spring 자원 비효율 (commit 30회), retry 예산 부족 |
+| BT-5REP | 5 rep 마다 (RC-2 piggyback) | ~6 | 4 rep | 🟡 해석 변경 | trigger 가 인위적 (5의 배수) |
+| **BT-SET** ⭐ | **세트 경계 + 세션 종료 final** | **3~5** | **1 set** | 🟡 해석 변경 | **운동 도메인 자연 단위. 휴식 시간 활용** |
+| BT-TIME | 30초 간격 timer | ~수~수십 | ~30초 분량 | 🟡 | 분석 SDK 패턴. trigger 인위적 |
+
+**추천 BT-SET 사유**:
+- **자연 trigger** — 운동의 *set* 단위가 mainstream (Strava·Apple Fitness·Peloton 모두 활용)
+- **휴식 시간 활용** — 세트 끝마다 사용자 30~90초 휴식 (`12-persona-difficulty.md` 의 `restTimeSec`). Spring 호출이 *운동 진행 중 아닌 휴식 중* 발생 → 부담 분산
+- **Retry 예산 30~90초** — 휴식 시간에 batch 실패 시 재시도 (5s/15s/35s backoff) 가능. 다음 세트 시작 전 거의 100% 성공
+- **호출 효율** — BT-REP 대비 commit 횟수 1/10, BT-NONE 대비 손실 위험 1/n
+- **운동 도메인 패턴 일치** — Peloton 인터벌 sync, Strava 세그먼트 sync 와 같은 단위
+
+**감수 트레이드오프**:
+- max 1 set (~10 rep) 손실 — 운영 진입 시 *디스크 영속화 (옵션 C)* 결합으로 0 가능
+- 요구사항 §5 *문구* ("종료 시 배치 1회") 와 어긋남 → *정신* ("실시간 매 rep 호출 금지") 으로 해석 변경 필요. 본 문서가 그 결정의 박제
+
+**Set 인지 방법**:
+```python
+# session_state.py
+class SessionState:
+    target_reps_per_set: int  # session 시작 시 받음 (12-persona-difficulty.md 의 targetReps)
+    current_set_reps: int = 0
+    current_set_no: int = 1
+    events_buffer: list = []
+
+    async def on_rep_completed(self, event):
+        if event.feedback_type:
+            self.events_buffer.append(event)
+        self.current_set_reps += 1
+
+        if self.current_set_reps >= self.target_reps_per_set:
+            await self.send_set_batch(is_final=False)
+            self.current_set_reps = 0
+            self.current_set_no += 1
+
+    async def send_set_batch(self, is_final: bool):
+        payload = {
+            "session_id": self.session_id,
+            "set_no": self.current_set_no,
+            "is_final": is_final,
+            "events": self.events_buffer,
+        }
+        # 휴식 시간 활용 retry (5s, 15s, 35s backoff)
+        for delay in [0, 5, 15, 35]:
+            await asyncio.sleep(delay)
+            try:
+                await self.spring_client.report_feedback_batch(payload)
+                self.events_buffer = []
+                return
+            except (httpx.TimeoutException, httpx.HTTPStatusError):
+                continue
+        # 3회 실패 시 events_buffer 유지 → 다음 set batch 시 함께 송신
+```
+
+**Spring DTO 확장**:
+```java
+public record FeedbackBatchRequestDto(
+    @NotNull Long sessionId,
+    @NotNull Integer setNo,           // ← 신규 (BT-SET)
+    @NotNull Boolean isFinal,         // ← 신규 (마지막 batch 인지)
+    @NotEmpty List<FeedbackEventDto> events
+) {}
+```
+
+**멱등성 (협의 안건 #10 동시 결정)**:
+- `session_feedback_logs` 에 `(session_id, occurred_at, feedback_type)` uniqueKey 추가
+- Spring 측 `INSERT IGNORE` 또는 `ON DUPLICATE KEY UPDATE` 로 중복 흡수
+- BT-SET 의 *retry* 가 안전하게 동작 (같은 events 재송신 OK)
+
+**도입 시점**:
+- 1학기 MVP 시연 (~5명): BT-NONE 도 OK (시연 controlled). 단 BE-13 시점에 어차피 코드 만지므로 BT-SET 미리 도입도 합리적
+- 베타 (50~100명): **BT-SET 도입 권장** ⭐
+- 정식 (1000+명): + 디스크 영속화 (옵션 C) 결합 → 손실 0
+
+#### 2.A.BT 책임 분담
+
+| 작업 | 주체 | 위치 | 분량 |
+|------|------|------|------|
+| DTO `set_no`/`is_final` 필드 + `@JsonNaming` | Spring | `FeedbackBatchRequestDto`, `FeedbackEventDto` | ~5줄 |
+| `session_feedback_logs` uniqueKey 변경 + INSERT IGNORE | Spring | schema·`SessionFeedbackLog`·`FeedbackLogService` | ~5줄 |
+| set 카운터 + 분기 | AI | `session_state.py` | ~15줄 |
+| `send_set_batch` + 휴식 retry (0s/5s/15s/35s) | AI | `session_state.py` + `spring_client.py` | ~40줄 |
+| `target_reps_per_set` 공식 계산 (`12-persona-difficulty.md` 와 동일) | AI | `session_state.py` | ~5줄 |
+| Front | **변경 없음** — 클라는 발화 채널 (분기 7-1) 만 관여, batch 무관 | — | 0 |
+
+→ **Spring 측 ~10줄** (BE-13 의 작업 B 로 통합) + **AI 측 ~60줄** (handoff `ai-tts-feedback-batch.md` §E)
+
+#### 2.A.BT 점진 전환 (기존 코드와의 호환성)
+
+```
+Phase 1 (시연 직전·MVP):
+  - Spring: 기존 코드 그대로 (단순 batch endpoint)
+  - AI:     BT-NONE 으로 송신 (세션 종료 1회)
+  → 호환
+
+Phase 2 (BE-13):
+  - Spring: DTO + uniqueKey + INSERT IGNORE 추가 (~10줄)
+  - AI:     아직 BT-NONE 유지 가능 (set_no=1, is_final=true 한 번만)
+  → 호환 (set_no 미수신 시 null 허용으로 두면)
+
+Phase 3 (베타 진입 전):
+  - Spring: 변경 없음 (Phase 2 에서 이미 준비됨)
+  - AI:     BT-SET 으로 전환 (set 카운터 + retry)
+  → 호환
+
+Phase 4 (정식):
+  - AI:     + 디스크 영속화 (옵션 C, SQLite WAL)
+  → 손실 0
+```
+
+→ Spring 측 작업은 Phase 2 *한 번* 으로 끝. AI 측은 Phase 3 에서 자체 전환.
 
 ---
 
@@ -777,10 +896,11 @@ Speech.speak(message, { language: 'ko-KR', rate: userTtsSpeed });
 │  POST /internal/feedback/batch                               │
 │  Header: X-Internal-Token: ***                               │
 │  Body: {                                                     │
-│    sessionId: 123,                                           │
+│    session_id: 123,                                          │
 │    events: [                                                 │
-│      { feedbackType: "KNEE_OUT", syncRateAtTrigger: 52.3,    │
-│        occurredAt: "2026-05-25T10:23:45+09:00" },            │
+│      { feedback_type: "KNEE_OUT",                            │
+│        sync_rate_at_trigger: 52.3,                           │
+│        occurred_at: "2026-05-25T10:23:45+09:00" },           │
 │      ...                                                     │
 │    ]                                                         │
 │  }                                                           │
@@ -1023,7 +1143,7 @@ Speech.speak(message, { language: 'ko-KR', rate: userTtsSpeed });
 
 | 안건 | 결정 필요 사항 |
 |---|---|
-| payload schema | `sessionId: long`, `events: [{ feedbackType, syncRateAtTrigger, occurredAt }]` — camelCase vs snake_case |
+| payload schema | **snake_case 채택** (Pydantic 기본·proto 공식 컨벤션). `{session_id, events:[{feedback_type, sync_rate_at_trigger, occurred_at}]}`. Spring 측 DTO 에 `@JsonNaming(SnakeCaseStrategy.class)` 2줄 추가 — AI 코드 0 변경 ([[feedback-minimize-python-changes]] 정합) |
 | 내부 토큰 운영 | `X-Internal-Token` 값 관리 위치 (환경변수·secret manager), 회전 정책 |
 | 타임아웃 | Spring 응답 대기 (5초·10초?) |
 | 재시도 정책 | Spring 5xx 시 AI 재시도 — 횟수·backoff·종료 조건 |
@@ -1180,6 +1300,31 @@ Speech.speak(message, { language: 'ko-KR', rate: userTtsSpeed });
 - **2026-05-25 (갱신 5)**: 분기 8 안에 "후보 4 갈래로 묶어 보기 (큰 그림)" 섹션 추가. 7개 후보를 ①사전캐시 / ②on-device / ③cloud실시간 / ④LLM / ⑤혼합 으로 묶어 설명. 기존 §8.1~§8.7 번호 변경 없음.
 - **2026-05-25 (갱신 6)**: 갱신 5 의 ①~⑤ 갈래(*음성 합성 위치* 한 축) 위에 **2차원 분류** 섹션 추가. *텍스트 생성 위치* 축을 추가하여 7개 후보를 2×2 매트릭스에 배치. 왼쪽 아래(텍스트 외부+음성 내부)는 비용·합리성 측면에서 의미 없음. 8-G 단독으로 오른쪽 아래(텍스트·음성 모두 외부) 차지. 현재 추천(8-A → 8-D)이 왼쪽 열에 위치함을 명시 — *운동 중 발화에는 LLM 미사용* 일관 원칙 확인.
 - **2026-05-25 (갱신 7)**: §10 "데이터 플로우 (8-A 채택 시 전체 흐름)" + §11 "Spring 서버 책임" 신설. 분기 1~9 결정을 end-to-end 다이어그램으로 통합. Spring 의 책임/비책임 영역을 명시 — Spring 은 (a) Setup API 3개, (b) batch 수신 1개, (c) 조회 API 2개, (d) 데이터 모델 운영, (e) BE-03 (추후) 만 담당. 8종 분류·멘트 생성·TTS 합성·ducking 등은 Spring 비책임으로 명시. 신규 BE 작업 ~150~180줄, BE-10 의 일부로 분류 가능. 운동 중 Spring 실시간 부담 0 (요구사항 §1 정합).
+- **2026-05-25 (갱신 14)**: **BT-SET 작업 분담 명시 + 점진 전환 단계 박제**:
+  - §2.A.BT 에 *책임 분담* sub-섹션 신설 — Spring (DTO·uniqueKey·INSERT IGNORE) ~10줄 + AI (set 카운터·retry·target_reps_per_set 자체 계산) ~60줄. **Front 변경 없음** (분기 7-1 의 발화 채널만 관여)
+  - §2.A.BT 에 *점진 전환* 4 단계 명시 — Phase 1 (MVP, BT-NONE) → Phase 2 (BE-13, Spring 준비) → Phase 3 (베타, AI 전환) → Phase 4 (정식, 디스크 영속화). **Spring 측 작업은 Phase 2 한 번으로 끝**
+  - `22-backend-tasks-detail.md` BE-13 에 *작업 B (BT-SET 지원)* 5 항목 추가 (~10줄, +0.5h). 협의 안건 #3·#10 BE-13 리스크 표에 명시
+  - `ai-tts-feedback-batch.md` 보강:
+    - 작업 패키지 추정 정정 (~100~130줄, 5~7h)
+    - *target_reps_per_set 수신 방법* 명시 — Persona + difficultyLevel 로 AI 자체 계산 권장 (Spring 무수정)
+    - 통신 컨벤션 snake_case 명시
+- **2026-05-25 (갱신 13)**: **분기 2.A.BT (송신 trigger 분할) 신설 + BT-SET (세트 경계 batch) 채택**:
+  - 분기 2-A 가 *세션 종료 1회* 로만 결정되어 있어 *강제 종료/AI 크래시/네트워크 단절 시 전체 세션 손실* 위험 존재
+  - 5 옵션 비교 (BT-NONE 현행 / BT-REP per-rep / BT-5REP 5rep batch / BT-SET 세트 경계 / BT-TIME 시간 timer):
+    - BT-REP: Spring 자원 비효율 (commit 30회), retry 예산 부족 (~2.5s)
+    - BT-SET ⭐: 운동 도메인 자연 단위, 휴식 시간 (30~90s) 활용 retry, 호출 효율, 운영 mainstream (Strava·Apple Fitness·Peloton)
+  - **세트 인지 방법**: `12-persona-difficulty.md` 의 `targetReps` 기반 카운터. AI `session_state.py` 에 `current_set_reps`·`current_set_no`·`events_buffer` 추가 (~10~15줄)
+  - **휴식 시간 활용 retry**: 0s/5s/15s/35s backoff, 총 ~55s. 다음 set 시작 전 거의 100% 성공
+  - **payload 확장**: `set_no`, `is_final` 필드 추가 (협의 안건 #3 갱신)
+  - **멱등성 필수** (협의 안건 #10): `session_feedback_logs` 에 `(session_id, occurred_at, feedback_type)` uniqueKey + `INSERT IGNORE`. retry 의 정상 운영을 위함
+  - **손실 최대 1 set** (~10 rep): 운영 진입 시 디스크 영속화 (옵션 C, AI SQLite WAL) 결합으로 0 가능
+  - **도입 시점**: 1학기 MVP 시연은 BT-NONE 도 OK / 베타 (50+명) 진입 전 BT-SET 도입 / 정식 (1000+명) 시 + 디스크 영속화
+  - 4 문서 갱신: tts-design.md §2.A.BT 신설, ai-tts-feedback-batch.md §E set-boundary 흐름·retry·DTO 확장 명시, tts-negotiation-checklist.md #3·#10 갱신
+- **2026-05-25 (갱신 12)**: **협의 안건 #3 (batch payload schema) snake_case 채택**:
+  - 당초 §2 의 payload 예시·§10 다이어그램·§12 안건 모두 camelCase 가정으로 작성
+  - 작업량 비교 결과: AI 측 Pydantic alias_generator (~15~20줄) vs Spring 측 `@JsonNaming(SnakeCaseStrategy.class)` 어노테이션 2줄. **Spring 측 2줄이 가장 가벼움** + [[feedback-minimize-python-changes]] 정합 (AI 코드 0 변경)
+  - 4 문서 정정: tts-design.md §2 payload·§10.1 다이어그램·§12 안건, tts-negotiation-checklist.md #3 표·상세 설명, ai-tts-feedback-batch.md `spring_client.py` 예시·협의 코멘트, 3way-meeting-agenda.md 미팅 밖 협의 표에 #3 ✅ 추가
+  - **결정**: snake_case 채택. Spring 측 `FeedbackBatchRequestDto`, `FeedbackEventDto` 2개에 `@JsonNaming` 어노테이션 추가는 BE-13 시점에 처리. Java 필드명 변경 불필요
 - **2026-05-25 (갱신 11)**: **코드 실태 확인 후 §11.3 정정 + 분기 1 의 HIP_LOW/HIP_HIGH 표기 오류 수정**:
   - §11.3 의 "신규 작업 230~290줄" 추정이 *과대평가* 였음. 커밋 `2f48526` (2026-05-09) 으로 이미 다음이 구현됨:
     - `InternalFeedbackController` (`/internal/feedback/batch`), `FeedbackTemplateController` (페르소나 필터 제외), `PreferenceController` (`/preferences/tts`), `FeedbackLogService.saveBatch`, `FeedbackBatchRequestDto`, `FeedbackType` enum 8종, `ExerciseFeedbackTemplate` 엔티티 (단 persona 컬럼 없음), `SessionFeedbackLog`, `members.selected_persona/tts_enabled/tts_speed`, seed 데이터 (스쿼트 4건 등)

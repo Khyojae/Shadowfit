@@ -10,11 +10,12 @@
 
 | 항목 | 값 |
 |------|---|
-| 코드 변경량 | ~70~100줄 (AI 측만) |
-| 추정 시간 | 4~6h (분류 함수 튜닝 제외) |
+| 코드 변경량 | ~100~130줄 (AI 측만, BT-SET 포함) |
+| 추정 시간 | 5~7h (분류 함수 튜닝 제외) |
 | 우선순위 | 🔴 시연 직결 — TTS 피드백 전체가 이 작업에 의존 |
-| 영향 | `PoseResponse` 신규 필드, `squat_analyzer` 분류 로직, `spring_client` batch 메서드, proto 1 필드 |
-| 선행 의존 | Spring 측 `POST /internal/feedback/batch` endpoint 신설 |
+| 영향 | `PoseResponse` 신규 필드, `squat_analyzer` 분류 로직, `session_state` 세트 카운터, `spring_client` batch 메서드, proto 1 필드 |
+| 선행 의존 | Spring 측 BE-13 (페르소나 분기 + BT-SET DTO 확장 + 멱등성 uniqueKey). **Spring BE-13 완료 후 AI 작업 시작 권장** |
+| 통신 컨벤션 | snake_case (협의 안건 #3 결정) |
 
 ---
 
@@ -121,24 +122,79 @@ class SessionState:
 
 rep 완료 + classify 결과가 None 이 아닐 때 누적.
 
-### E. 세션 종료 시 batch POST (★)
+### E. set-boundary batch + 휴식 retry (★)
 
-**위치**: `ai-server/app/services/spring_client.py`
+**분기 2.A.BT (BT-SET) 채택**: 세트 경계마다 mini-batch 송신 + 세션 종료 시 final batch. 매 rep 송신 (BT-REP) 거부 — Spring 자원 비효율 + retry 예산 부족.
+
+**`target_reps_per_set` 수신 방법**:
+- `Member.selectedPersona` + `Session.difficultyLevel` 로 *공식 계산*:
+  ```python
+  # 12-persona-difficulty.md 의 getDifficultyConfig 와 동일 공식
+  def compute_target_reps(persona: str, level: int) -> int:
+      base = 5 if persona == "REHAB" else 10
+      return base + (level - 1) * 2
+  ```
+- AI 가 세션 시작 시 (`POST /pose` 의 첫 호출 또는 별도 setup 신호) `persona`, `difficulty_level` 받음
+- *AI 측 자체 계산* 권장 — Spring 무수정. 공식이 안정적이라 drift 위험 낮음
+- 또는 Spring 이 `Session` 응답에 `target_reps_per_set` 컬럼 추가 — Spring 변경 +1줄
+
+**위치**: `ai-server/app/services/spring_client.py`, `ai-server/app/core/session_state.py`
 
 ```python
-async def report_feedback_batch(self, session_id: int, events: list[FeedbackEvent]):
-    """세션 종료 시 1회 호출. 분기 2-A."""
-    payload = {
-        "sessionId": session_id,
-        "events": [
-            {
-                "feedbackType": e.feedback_type,
-                "syncRateAtTrigger": e.sync_rate_at_trigger,
-                "occurredAt": e.occurred_at.isoformat(),
-            }
-            for e in events
-        ],
-    }
+# session_state.py
+class SessionState:
+    target_reps_per_set: int       # 세션 시작 시 받음 (12-persona-difficulty.md targetReps)
+    current_set_reps: int = 0
+    current_set_no: int = 1
+    events_buffer: list = []
+
+    async def on_rep_completed(self, event):
+        if event.feedback_type:
+            self.events_buffer.append(event)
+        self.current_set_reps += 1
+
+        if self.current_set_reps >= self.target_reps_per_set:
+            asyncio.create_task(self.send_set_batch(is_final=False))   # 휴식 중 백그라운드
+            self.current_set_reps = 0
+            self.current_set_no += 1
+
+    async def on_session_end(self):
+        await self.send_set_batch(is_final=True)   # 잔여분 + final 플래그
+
+    async def send_set_batch(self, is_final: bool):
+        if not self.events_buffer and not is_final:
+            return   # 빈 batch 는 skip (set 안에 결함 없으면)
+
+        payload = {
+            "session_id": self.session_id,
+            "set_no": self.current_set_no,
+            "is_final": is_final,
+            "events": [
+                {
+                    "feedback_type": e.feedback_type,
+                    "sync_rate_at_trigger": e.sync_rate_at_trigger,
+                    "occurred_at": e.occurred_at.isoformat(),
+                }
+                for e in self.events_buffer
+            ],
+        }
+        # 휴식 시간 활용 retry: 0s, 5s, 15s, 35s backoff (총 ~55s, 최소 휴식 30s 내 거의 성공)
+        for delay in [0, 5, 15, 35]:
+            await asyncio.sleep(delay)
+            try:
+                await self.spring_client.report_feedback_batch(payload)
+                self.events_buffer = []   # 성공 시 버퍼 비움
+                return
+            except (httpx.TimeoutException, httpx.HTTPStatusError) as e:
+                logger.warning(f"batch send retry {delay}s: {e}")
+        # 3회 실패 — events_buffer 유지 → 다음 set batch 시 함께 송신 (또는 final batch 시)
+        logger.error(f"batch send failed after retries: set_no={self.current_set_no}")
+```
+
+```python
+# spring_client.py
+async def report_feedback_batch(self, payload: dict):
+    """BT-SET 모드: 세트 경계 또는 세션 종료 시 호출."""
     headers = {"X-Internal-Token": settings.SPRING_INTERNAL_TOKEN}
     async with httpx.AsyncClient(timeout=10.0) as client:
         resp = await client.post(
@@ -147,14 +203,39 @@ async def report_feedback_batch(self, session_id: int, events: list[FeedbackEven
             headers=headers,
         )
         resp.raise_for_status()
+# snake_case 채택. Spring DTO @JsonNaming(SnakeCaseStrategy.class) 전제.
+```
+
+**payload schema** (snake_case, 협의 안건 #3):
+```json
+{
+  "session_id": 123,
+  "set_no": 2,
+  "is_final": false,
+  "events": [
+    { "feedback_type": "KNEE_OUT", "sync_rate_at_trigger": 52.3, "occurred_at": "..." }
+  ]
+}
 ```
 
 **협의 필요 (Spring 담당자)**:
-- payload 필드명 camelCase vs snake_case (위는 camelCase 가정)
-- 타임아웃 (위는 10초)
-- 재시도 정책 — 5xx 시 backoff retry 3회? 현재는 1회만
-- 멱등성 — 같은 sessionId 재송신 처리. Spring upsert 가정
-- 부분 실패 — events 일부 invalid 시 응답 정책
+- payload — **snake_case** + 신규 필드 `set_no`, `is_final` (협의 안건 #3 갱신)
+- 타임아웃 10초 + AI 측 3회 retry (총 ~55s 안에 결정)
+- **멱등성** (협의 안건 #10) — `session_feedback_logs` 에 `(session_id, occurred_at, feedback_type)` uniqueKey 추가 + `INSERT IGNORE` 또는 `ON DUPLICATE KEY UPDATE`. 같은 events 재송신 안전 흡수
+- 부분 실패 — events 일부 invalid 시 응답 정책 (현재 추정: 유효한 것만 insert, reject 목록 응답)
+- 빈 batch (`events=[]`) 처리 — `is_final=true` 일 때만 허용 vs 항상 허용
+
+**손실 시나리오 종합**:
+| 시나리오 | BT-SET 동작 | 손실 |
+|---|---|---|
+| 정상 운동 종료 | 세트마다 batch + final | 0 |
+| 세트 중간 강제 종료 | 진행 중 set 의 events 손실 | max 1 set |
+| 휴식 중 강제 종료 | 직전 set batch 는 retry 로 송신 완료 | 0 |
+| 네트워크 일시 단절 | 휴식 시간 retry 로 복구 | 0 (휴식 30~90s 내) |
+| Spring 5xx 일시 | 휴식 시간 retry 로 복구 | 0 |
+| AI 크래시·재시작 | 메모리 손실 | 전체 (옵션 C 디스크 결합 시 0) |
+
+→ 운영 진입 시 디스크 영속화 (옵션 C) 와 결합하면 *모든 시나리오 손실 0* 가능.
 
 ### F. 세션 종료 신호 수신 (분기 2.A.ET 의 ET-A)
 

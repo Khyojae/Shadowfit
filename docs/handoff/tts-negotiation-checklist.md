@@ -26,7 +26,7 @@
 |:-:|---|---|---|:-:|:-:|
 | 1 | 8종 enum 표기 | `POST /internal/feedback/batch`, `GET /sessions/{id}/feedbacks`, `GET /sessions/{id}/feedback-summary`, `GET /exercises/{id}/feedback-templates`, proto `feedback_type` | `KNEE_OUT` UPPER_SNAKE 통일 / master = `REQUIREMENTS.md` §6 | 3자 | ☐ |
 | 2 | 페르소나 enum 표기 | `GET /users/me`, `PATCH /users/me/persona`, `GET /exercises/{id}/feedback-templates` | `BEGINNER/ADVANCED/DIET/REHAB` / master = `12-persona-difficulty.md` | 3자 | ☐ |
-| 3 | batch payload schema | `POST /internal/feedback/batch` | camelCase `{sessionId, events:[{feedbackType, syncRateAtTrigger, occurredAt}]}` | A ↔ S | ☐ |
+| 3 | batch payload schema | `POST /internal/feedback/batch` | **snake_case** `{session_id, set_no, is_final, events:[{feedback_type, sync_rate_at_trigger, occurred_at}]}` + Spring DTO 에 `@JsonNaming(SnakeCaseStrategy.class)`. `set_no`·`is_final` 은 BT-SET (분기 2.A.BT) 채택 결과 | A ↔ S | ☐ |
 | 4 | proto `feedback_type` 필드 | `ai-server/app/proto/exercise.proto` + `backend/src/main/proto/exercise.proto`, `POST /pose` 응답 모델 | string + 화이트리스트 검증 / 필드 번호 양쪽 동기 | A ↔ S | ☐ |
 | 5 | 인증·토큰 endpoint 분리 | 전체 — `/api/*` (JWT) vs `/internal/*` (`X-Internal-Token`) | 경로 prefix 로 명확 분리 | 3자 | ☐ |
 
@@ -40,7 +40,7 @@
 | 7 | 클라 양방향 호출 순서 | (Front) `PATCH /sessions/{id}/end` + AI 측 종료 신호 | `Promise.all` 동시 / 부분 실패 허용 | F ↔ S | ☐ |
 | 8 | 분류 임계값 위치 | (Spring API 없음 — AI 내부) | `squat_analyzer` 상수 / 영상 5~10건 튜닝 | A 단독 (공유) | ☐ |
 | 9 | priority 상수 위치 | (Spring API 없음 또는 `GET /exercises/{id}/feedback-templates` 응답에 포함) | AI 내장 (3-A-1) — 3-A-2 거부 | A 단독 | ☐ |
-| 10 | batch 재시도·멱등성 | `POST /internal/feedback/batch` | AI 5xx → 3회 backoff retry / Spring upsert (`sessionId + occurredAt` uniq) | A ↔ S | ☐ |
+| 10 | batch 재시도·멱등성 | `POST /internal/feedback/batch` | **BT-SET 채택으로 필수**. AI 측 휴식 중 retry (0s/5s/15s/35s backoff, 총 ~55s) + Spring 측 `(session_id, occurred_at, feedback_type)` uniqueKey + `INSERT IGNORE`/`ON DUPLICATE KEY UPDATE` | A ↔ S | ☐ |
 | 11 | batch 부분 실패 처리 | `POST /internal/feedback/batch` | 전체 reject vs 유효한 것만 insert + reject 목록 응답 | A ↔ S | ☐ |
 | 12 | templates 응답 구조 | `GET /exercises/{id}/feedback-templates` | `{type: message}` Map vs `[{type, message}]` Array | F ↔ S | ☐ |
 | 13 | 페르소나 변경 후 캐시 무효화 | `PATCH /users/me/persona` → `GET /exercises/{id}/feedback-templates` 재호출 | PATCH 응답에 `templatesReloadRequired: true` vs 클라가 운동 시작 시 항상 재호출 | F ↔ S | ☐ |
@@ -79,7 +79,7 @@
 
 **#2 페르소나 enum 표기** — 사용자 페르소나 (`BEGINNER`/`ADVANCED`/`DIET`/`REHAB`) 의 *master 위치*. `Member.selectedPersona` 와 `12-persona-difficulty.md` 가 정합한지 확인 + 문서·코드 어느 쪽이 master 인지 명시.
 
-**#3 batch payload schema** — AI 가 세션 종료 시 Spring 에 보내는 `POST /internal/feedback/batch` 의 request body 정확한 구조. 필드명(camelCase/snake_case), 타입(string/enum), nested 구조 확정.
+**#3 batch payload schema** — AI 가 *세트 경계마다* Spring 에 보내는 `POST /internal/feedback/batch` 의 request body (분기 2.A.BT BT-SET 채택). **snake_case 채택** — Pydantic 기본·proto 공식 컨벤션 + AI 측 변환 코드 불필요 ([[feedback-minimize-python-changes]] 정합). Spring DTO 2개 (`FeedbackBatchRequestDto`, `FeedbackEventDto`) 에 `@JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)` 어노테이션 + `set_no`·`is_final` 필드 추가. Java 필드명은 camelCase 그대로.
 
 **#4 proto `feedback_type` 필드** — AI ↔ Spring gRPC 의 `RepCompletedEvent` + Pose API 응답에 추가할 신규 필드. proto 파일 양쪽(`ai-server/app/proto/exercise.proto`, `backend/src/main/proto/exercise.proto`) 동기 + 필드 번호·타입 결정.
 
@@ -95,7 +95,7 @@
 
 **#9 priority 상수 위치** — 다중 결함 검출 시 1개 선택용 priority. AI 가 *내장 상수* (3-A-1) 로 갖는가, Spring 부팅 시 `GET /exercises/{id}/feedback-templates` 호출로 fetch 하는가 (3-A-2).
 
-**#10 batch 재시도·멱등성** — Spring 5xx 시 AI 재시도 정책 (횟수·backoff) + 같은 sessionId 재송신 시 Spring 멱등 처리 (upsert·uniqueKey). 현재 `session_feedback_logs` uniqueKey 없음 → BE-13 시점에 같이 검토 권장.
+**#10 batch 재시도·멱등성** — **분기 2.A.BT (BT-SET) 채택으로 필수**. 세트 경계마다 batch 송신 + 휴식 시간 (30~90s) 활용 retry → 같은 events 가 *합법적으로* 재송신될 수 있음. AI 측 backoff (0s/5s/15s/35s, 4회). Spring 측 `session_feedback_logs` 에 `(session_id, occurred_at, feedback_type)` uniqueKey 추가 + `INSERT IGNORE` 또는 `ON DUPLICATE KEY UPDATE` 로 중복 흡수. 현재 uniqueKey 없음 → BE-13 schema 변경 시 같이 처리.
 
 **#11 batch 부분 실패** — events 배열 중 일부가 invalid (잘못된 `feedbackType` 등) 일 때 *전체 reject* vs *유효한 것만 insert + reject 목록 응답*.
 

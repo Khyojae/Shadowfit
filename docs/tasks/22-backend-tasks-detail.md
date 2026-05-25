@@ -354,11 +354,11 @@
 
 ---
 
-## BE-13 — TTS 피드백 템플릿 페르소나 분기 적용
+## BE-13 — TTS 피드백 템플릿 페르소나 분기 적용 + BT-SET 송신 trigger 지원
 
-**우선**: 🟡 | **추정**: 2.5h | **의존**: 없음 (지금 시작 가능) | **상태**: 📋
+**우선**: 🟡 | **추정**: 3h (페르소나 2.5h + BT-SET 0.5h) | **의존**: 없음 (지금 시작 가능) | **상태**: 📋
 
-배경: [`../decisions/tts-design.md`](../decisions/tts-design.md) §11.3 갱신 11, [`../handoff/tts-negotiation-checklist.md`](../handoff/tts-negotiation-checklist.md) #1·12·13·24. 기존 TTS 도메인(커밋 `2f48526`)은 페르소나 무관 단일 멘트만 제공. 분기 4-A + 페르소나 시스템([`../12-persona-difficulty.md`](../12-persona-difficulty.md)) 결합 시 토큰의 `selectedPersona` 로 자동 필터링되어야 함.
+배경: [`../decisions/tts-design.md`](../decisions/tts-design.md) §11.3 갱신 11 + §2.A.BT 갱신 13, [`../handoff/tts-negotiation-checklist.md`](../handoff/tts-negotiation-checklist.md) #1·3·10·12·13·24. 기존 TTS 도메인(커밋 `2f48526`)은 페르소나 무관 단일 멘트만 제공 + 세션 종료 1회 batch 만 지원. 분기 4-A + 페르소나 시스템([`../12-persona-difficulty.md`](../12-persona-difficulty.md)) + BT-SET (세트 경계 batch + 멱등성) 결합.
 
 ### 현재 상태
 - ✅ `Member.selectedPersona` (enum BEGINNER/ADVANCED/DIET/REHAB, default BEGINNER) — `model/member/Member.java:36`
@@ -370,6 +370,8 @@
 - ❌ Controller 의 페르소나 자동 필터링 없음
 
 ### 만질 파일
+
+**A. 페르소나 분기 (2.5h)**
 1. `mysql/schema.sql:120-128` + `mysql/data.sql:79-87` — `exercise_feedback_templates` 테이블에 `persona VARCHAR(10) NULL` 컬럼 추가, uniqueKey 를 `(exercise_id, feedback_type, persona)` 로 변경. `persona IS NULL` row 는 *공통 fallback* 의미
 2. `model/exercise/ExerciseFeedbackTemplate.java` — `@Enumerated SelectedPersona persona` 필드 + uniqueConstraint 갱신 (~10줄)
 3. `repository/exercise/ExerciseFeedbackTemplateRepository.java` — `findByExerciseAndPersonaWithFallback(exercise, persona)` 신설. 페르소나 row 가 있으면 그것, 없으면 `persona IS NULL` fallback 반환 (~15줄)
@@ -378,11 +380,42 @@
 6. `mysql/data.sql` — 스쿼트 4 결함 × 4 페르소나 = 16 row seed (스쿼트만 우선, 런지·플랭크는 후속) (~20줄)
    - 12-persona-difficulty.md 의 페르소나별 톤 가이드 활용
 
+**B. BT-SET 송신 trigger 지원 (0.5h)** — AI 가 *세트 경계마다* batch 송신할 수 있게 기존 endpoint 확장. 협의 안건 #3 (snake_case + set_no/is_final) 및 #10 (멱등성) 동시 처리.
+7. `dto/exercises/feedback/FeedbackBatchRequestDto.java` — `set_no`, `is_final` 필드 추가 + `@JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)` 어노테이션
+   ```java
+   @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+   public record FeedbackBatchRequestDto(
+       @NotNull Long sessionId,
+       @NotNull Integer setNo,                    // 신규 (BT-SET)
+       @NotNull Boolean isFinal,                  // 신규 (마지막 batch 인지)
+       @NotEmpty @Valid List<FeedbackEventDto> events
+   ) {}
+   ```
+8. `dto/exercises/feedback/FeedbackEventDto.java` — `@JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)` 어노테이션 1줄 (필드 변경 없음)
+9. `model/exercise/SessionFeedbackLog.java` + `mysql/schema.sql:132-140` — uniqueKey 추가 `(session_id, occurred_at, feedback_type)`. 멱등성 (협의 안건 #10) 보장
+   ```java
+   @Table(name = "session_feedback_logs",
+          uniqueConstraints = @UniqueConstraint(
+              name = "uk_session_event",
+              columnNames = {"session_id", "occurred_at", "feedback_type"}),
+          indexes = @Index(name = "idx_session_feedback", columnList = "session_id, occurred_at"))
+   ```
+10. `service/Exercise/FeedbackLogService.java` — `saveBatch()` 가 중복 row 처리. JPA 의 `saveAll` 대신 native `INSERT IGNORE` 또는 try-catch + skip. AI 측 retry 가 같은 events 재송신해도 안전 흡수
+11. (선택) `InternalFeedbackController.batch()` — 응답에 `insertedCount` 포함 (협의 안건 #20). 현재는 문자열 응답 → JSON 권장. **MVP 보류 가능**
+
 ### 완료 기준
+
+**페르소나 분기**:
 - `GET /exercises/1/feedback-templates` 호출 시 토큰의 사용자 페르소나(예: HEALCHANG) 에 맞는 4건 반환
 - 페르소나 변경(`PATCH /users/me/persona`) 후 다음 호출 시 새 페르소나 멘트 반환
 - 페르소나 row 가 없는 운동은 `persona IS NULL` fallback 반환 (런지·플랭크 — 후속 작업까지 호환)
 - 단위 테스트 — 4 페르소나 × 1 호출 = 4 응답 검증
+
+**BT-SET 지원**:
+- `POST /internal/feedback/batch` 가 snake_case payload 수신 (`{session_id, set_no, is_final, events:[...]}`)
+- 같은 세션의 다중 batch 정상 처리 (각각 별 row 로 적재)
+- 같은 `(session_id, occurred_at, feedback_type)` 의 재송신 시 멱등 (INSERT IGNORE 동작, 중복 row 생성 안 됨)
+- 단위 테스트 — 같은 events 2번 송신 → DB row 수 1번과 동일
 
 ### 리스크/의존
 
@@ -392,6 +425,8 @@
 |---|:-:|:-:|:-:|
 | **#1 8종 enum 표기 master** — `FeedbackType.java` ↔ `REQUIREMENTS.md` §6 정합 | 3자 | 작업 전 | 🔴 |
 | **#2 페르소나 enum 표기 master** — `SelectedPersona` ↔ `12-persona-difficulty.md` 정합 | 3자 | 작업 전 | 🔴 |
+| **#3 batch payload schema** — snake_case + set_no/is_final + `@JsonNaming` (BT-SET 결과) | AI | 작업 전 | 🔴 |
+| **#10 재시도·멱등성** — `(session_id, occurred_at, feedback_type)` uniqueKey + INSERT IGNORE | AI | 작업 중 | 🟡 |
 | **#12 응답 구조** — Map vs Array (Array 권장) | Front | 작업 중 | 🟡 |
 | **#13 캐시 무효화** — `PATCH /users/me/persona` 후 클라 reload 신호 | Front | 작업 중 | 🟡 |
 | **#24 빈 결과 처리** — `persona IS NULL` fallback (repo 의 fallback 쿼리 정합) | Front | 작업 중 | 🟡 |
