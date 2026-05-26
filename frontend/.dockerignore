@@ -1,0 +1,13 @@
+node_modules
+.expo
+dist
+web-build
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+.git
+.gitignore
+Dockerfile
+*.tsbuildinfo
+ios
+android

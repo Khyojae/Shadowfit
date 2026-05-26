@@ -1,0 +1,19 @@
+ARG NODE_VERSION=22.13.1
+FROM node:${NODE_VERSION}-alpine
+
+WORKDIR /app
+
+ENV EXPO_NO_TELEMETRY=1
+ENV EXPO_DEVTOOLS_LISTEN_ADDRESS=0.0.0.0
+
+COPY package*.json ./
+RUN npm ci
+
+COPY . .
+
+EXPOSE 8081
+EXPOSE 19000
+EXPOSE 19001
+EXPOSE 19002
+
+CMD ["npm", "run", "start", "--", "--host", "lan"]

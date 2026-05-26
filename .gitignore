@@ -51,6 +51,8 @@ backend/.springBeans
 backend/.sts4-cache
 
 # ==================== AI Server (Python / FastAPI) ====================
+.venv/
+venv/
 ai-server/venv/
 ai-server/.venv/
 ai-server/__pycache__/
@@ -63,6 +65,16 @@ ai-server/build/
 ai-server/.mypy_cache/
 ai-server/.pytest_cache/
 ai-server/.ruff_cache/
+ai-server/*.log
+ai-server/uvicorn.*.log
+
+# ==================== 미디어 / 분석 산출물 ====================
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.webm
+/git_local
 
 # ==================== Java ====================
 *.class
@@ -110,6 +122,9 @@ src/main/resources/application-local.properties
 /out/
 .gradle/
 
-#프론트 제외
-frontend/
+#프론트 제외 (Dockerfile 과 .dockerignore 만 예외)
+frontend/*
+!frontend/Dockerfile
+!frontend/.dockerignore
 .agents/
+.backup-presync/
