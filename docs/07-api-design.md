@@ -261,26 +261,44 @@ AI = 운동 통계의 단일 진실 원천 원칙. (커밋 143a2e4)
 }
 ```
 
-## 내부 API (Spring 외부 비공개)
+## 내부 API (AI ↔ Spring, gRPC 단일 채널)
 
-### POST /internal/feedback/batch - 세션별 TTS 발화 이벤트 배치 저장
-**호출자**: AI 서버. 운동 중 device TTS 가 발화한 이벤트들을 **세션 종료 시 한 번에** 전송. 실시간 호출 금지.
-**인증**: 헤더 `X-Internal-Token: {INTERNAL_API_TOKEN}` (`/exercises` gRPC 와는 별도 채널, REST용 헤더 인증)
-```json
+> **2026-05-26 갱신**: AI → Spring 내부 호출은 *전부 gRPC* 로 통일. `Authorization: Bearer {INTERNAL_API_TOKEN}` (metadata) 로 인증. REST `/internal/*` endpoint 는 폐기됨 (기존 `POST /internal/feedback/batch` → `ExerciseService.ReportFeedbackBatch`). proto 정의는 `backend/src/main/proto/exercise.proto`. 박제: [`./decisions/tts-design.md`](./decisions/tts-design.md) 상단 박스.
+
+### gRPC ExerciseService.ReportFeedbackBatch — 세션별 TTS 발화 이벤트 batch 저장
+**호출자**: AI 서버 (FastAPI → Spring). BT-SET 모델 (분기 2.A.BT) — *세트 경계마다 mini-batch + 세션 종료 시 final batch*. 매 rep 실시간 호출 금지.
+**인증**: gRPC metadata `Authorization: Bearer {INTERNAL_API_TOKEN}` (`InternalAuthInterceptor`).
+**멱등성**: `(session_id, occurred_at, feedback_type)` uniqueKey + `INSERT IGNORE`. 같은 events 재송신 안전.
+
+```proto
 // Request
-{
-  "sessionId": 42,
-  "events": [
-    {
-      "feedbackType": "KNEE_OVER",
-      "syncRateAtTrigger": 62.3,
-      "occurredAt": "2026-05-20T14:01:23"
-    }
-  ]
+message FeedbackBatchRequest {
+  int64 session_id = 1;
+  int32 set_no = 2;                            // 1-based. BT-NONE 호환 시 1 고정
+  bool is_final = 3;                           // 마지막 batch 여부
+  repeated FeedbackEvent events = 4;
 }
-// Response 200
-"Saved N feedback events for session 42"
+
+message FeedbackEvent {
+  string feedback_type = 1;                    // 8종 enum 중 하나 (KNEE_OUT 등)
+  double sync_rate_at_trigger = 2;
+  google.protobuf.Timestamp occurred_at = 3;
+}
+
+// Response
+message FeedbackBatchResponse {
+  int64 session_id = 1;
+  int32 saved_count = 2;                       // INSERT 된 row 수 (중복 흡수 제외)
+}
 ```
+
+### 기존 gRPC RPC (참고)
+
+- `StartAnalysis (AnalyzeRequest) returns (AnalyzeResponse)` — Spring → FastAPI 세션 시작
+- `StopAnalysis (StopRequest) returns (StopResponse)` — Spring → FastAPI 강제 중단 (ET-H, `SessionService.endSession` afterCommit 에서 호출)
+- `SavePoseDataBatch (PoseDataBatchRequest) returns (PoseDataResponse)` — FastAPI → Spring 포즈 batch
+- `CompleteAnalysis (SessionCompleteRequest) returns (SessionCompleteResponse)` — FastAPI → Spring 세션 최종 통계
+- `ExtractReferenceData (ExtractRequest) returns (ExtractResponse)` — Spring → FastAPI YouTube 좌표 추출
 
 ## 공통 응답 형식
 

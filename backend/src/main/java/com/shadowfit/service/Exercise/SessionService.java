@@ -44,6 +44,11 @@ public class SessionService {
     @Autowired
     private SessionService self;
 
+    // endSession afterCommit 에서 AI 통보용 — 순환 의존 회피 위해 @Lazy
+    @Lazy
+    @Autowired
+    private ExerciseAnalysisService analysisService;
+
     /**
      * [세션 생성] 새로운 운동 분석 프로세스를 시작하기 위한 초기 레코드를 생성합니다.
      *
@@ -111,6 +116,43 @@ public class SessionService {
         session.setCaloriesBurned(java.math.BigDecimal.valueOf(request.getCaloriesBurned()));
 
         sessionRepository.saveAndFlush(session);
+    }
+
+    /**
+     * [세션 종료 — 분기 2.A.ET ET-H, 단일 endpoint 분배자 패턴]
+     * 클라가 "운동 종료" 버튼 → endTime 기록 + (afterCommit) AI 에 gRPC StopAnalysis 송신.
+     *
+     * - endTime 만 즉시 기록. 통계 갱신(totalReps/avgSync) 은 AI 의 CompleteAnalysis 콜백이 별도 처리
+     * - AI gRPC 호출은 transaction commit 이후 fire-and-forget — 외부 호출이 transaction 안에 끼지 않도록
+     * - 본인 세션이 아니면 ACCESS_DENIED, 이미 종료된 세션이면 멱등 (변경 없음, 200 OK)
+     * - gRPC 호출 실패 시: SessionTimeoutScheduler 가 safety net (IN_PROGRESS → FAILED)
+     */
+    @Transactional
+    public void endSession(Long sessionId, Long currentMemberId) {
+        Session session = sessionRepository.findById(sessionId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.SESSION_NOT_FOUND));
+
+        if (!session.getMember().getId().equals(currentMemberId)) {
+            throw new BusinessException(ErrorCode.ACCESS_DENIED);
+        }
+
+        // 멱등: 이미 endTime 기록된 세션은 변경 없음 (AI 재호출도 안 함)
+        if (session.getEndTime() != null) {
+            return;
+        }
+
+        session.setEndTime(LocalDateTime.now());
+        sessionRepository.saveAndFlush(session);
+
+        // afterCommit 으로 AI 통보 — DB 변경 확정 후 외부 호출
+        org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                new org.springframework.transaction.support.TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        analysisService.stopAnalysis(sessionId);
+                    }
+                }
+        );
     }
 
     /**

@@ -43,6 +43,7 @@ services:
       - "6565:6565"
     environment:
       SPRING_PROFILES_ACTIVE: prod
+      TZ: Asia/Seoul
       DB_HOST: shadowfit-mysql
       DB_USERNAME: ${DB_USERNAME}
       DB_PASSWORD: ${DB_PASSWORD}
@@ -72,6 +73,7 @@ services:
       - "8585"
     environment:
       DEBUG: "false"
+      TZ: Asia/Seoul
       INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN}
       POSE_MODEL_COMPLEXITY: 1
       BACKEND_URL: http://shadowfit-backend:8080/api/v1

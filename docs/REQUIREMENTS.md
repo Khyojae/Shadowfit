@@ -60,7 +60,7 @@
 | 기능 | 메서드 / 경로 | 비고 |
 |---|---|---|
 | 포즈 데이터 배치 저장 | `POST /internal/exercises/pose-data` | FastAPI가 sessionId별 배치 전송, `X-Internal-Token` 검증 |
-| 피드백 발화 이벤트 배치 저장 | `POST /internal/feedback/batch` | 세션 종료 시 FastAPI가 한 번에 전송 (실시간 호출 금지) |
+| 피드백 발화 이벤트 배치 저장 | **gRPC `ExerciseService.ReportFeedbackBatch`** (FastAPI → Spring) | 세션 종료 / 세트 경계 (BT-SET, 분기 2.A.BT) 시 FastAPI 가 batch 송신. 실시간 매 rep 호출 금지. ~~REST `POST /internal/feedback/batch` 폐기 (2026-05-26 gRPC 통일 결정)~~ |
 
 ---
 

@@ -8,12 +8,19 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
- * 세션 진행 중 device TTS로 발화된 피드백 이벤트 로그.
- * 운동 종료 시 FastAPI가 배치로 일괄 전송 (실시간 호출 X).
+ * 세션 진행 중 AI 가 판정한 피드백 이벤트 로그 (분기 2-A 의미 재정의).
+ * AI 가 BT-SET 으로 세트 경계마다 batch 송신 (분기 2.A.BT). 휴식 시간 retry 가능.
+ *
+ * 멱등성 (BE-13-G):
+ *   uniqueKey (session_id, occurred_at, feedback_type) 로 중복 row 방지.
+ *   FeedbackLogService 가 per-row try/catch 로 DataIntegrityViolationException 흡수.
  */
 @Entity
 @Table(name = "session_feedback_logs",
-       indexes = @Index(name = "idx_session_feedback", columnList = "session_id, occurred_at"))
+       indexes = @Index(name = "idx_session_feedback", columnList = "session_id, occurred_at"),
+       uniqueConstraints = @UniqueConstraint(
+               name = "uk_session_event",
+               columnNames = {"session_id", "occurred_at", "feedback_type"}))
 @Getter @Setter
 @NoArgsConstructor
 @AllArgsConstructor

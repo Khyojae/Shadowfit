@@ -184,7 +184,7 @@ CREATE TABLE session_feedback_logs (
     INDEX idx_session_feedback (session_id, occurred_at)
 );
 ```
-운동 중 device TTS 가 실제 발화한 시점을 세션 종료 시 AI 가 `POST /internal/feedback/batch` (헤더 `X-Internal-Token`) 로 일괄 전송. 실시간 호출 금지.
+운동 중 device TTS 가 실제 발화한 시점을 AI 가 gRPC `ExerciseService.ReportFeedbackBatch` (인증: `Authorization: Bearer`) 로 송신. BT-SET (분기 2.A.BT) 모델 — 세트 경계마다 mini-batch + 세션 종료 시 final batch. 매 rep 실시간 호출 금지. 멱등성: `(session_id, occurred_at, feedback_type)` uniqueKey + `INSERT IGNORE` 로 retry 안전.
 
 ## joint_coordinates JSON 구조 예시
 MediaPipe의 33개 관절 포인트에 대한 1초 평균 좌표:

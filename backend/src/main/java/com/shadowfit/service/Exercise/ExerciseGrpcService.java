@@ -19,6 +19,7 @@ import net.devh.boot.grpc.server.service.GrpcService;
 public class ExerciseGrpcService extends ExerciseServiceGrpc.ExerciseServiceImplBase {
     private final PoseDataService poseDataService;
     private final SessionService sessionService;
+    private final FeedbackLogService feedbackLogService;
 
     /**
      * [AI -> Spring] 운동 분석 중 생성된 포즈 데이터들을 배치(Batch)로 저장합니다.
@@ -97,6 +98,36 @@ public class ExerciseGrpcService extends ExerciseServiceGrpc.ExerciseServiceImpl
         } catch (Exception e) {
             log.error("세션 종료 gRPC 처리 중 에러: {}", e.getMessage());
             responseObserver.onError(e);
+        }
+    }
+
+    /**
+     * [AI -> Spring] TTS 피드백 발화 이벤트 batch 저장 (BT-SET, 분기 2.A.BT).
+     * 기존 REST POST /internal/feedback/batch 를 gRPC 로 단일화 (gRPC 통일 결정, 2026-05-25).
+     */
+    @Override
+    public void reportFeedbackBatch(FeedbackBatchRequest request,
+                                    StreamObserver<FeedbackBatchResponse> responseObserver) {
+        try {
+            int saved = feedbackLogService.saveBatch(request);
+
+            FeedbackBatchResponse response = FeedbackBatchResponse.newBuilder()
+                    .setSessionId(request.getSessionId())
+                    .setSavedCount(saved)
+                    .build();
+
+            responseObserver.onNext(response);
+            responseObserver.onCompleted();
+        } catch (com.shadowfit.global.error.BusinessException e) {
+            log.warn("피드백 batch 거부 - session={}, code={}", request.getSessionId(), e.getErrorCode().name());
+            responseObserver.onError(io.grpc.Status.INVALID_ARGUMENT
+                    .withDescription(e.getErrorCode().name() + ": " + e.getErrorCode().getMessage())
+                    .asRuntimeException());
+        } catch (Exception e) {
+            log.error("피드백 batch 처리 중 에러: {}", e.getMessage());
+            responseObserver.onError(io.grpc.Status.INTERNAL
+                    .withDescription(e.getMessage())
+                    .asRuntimeException());
         }
     }
 }

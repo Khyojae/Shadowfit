@@ -166,8 +166,10 @@ public class ExerciseAnalysisService {
     }
 
     /**
-     * [STEP 4: 사용자 강제 중단]
-     * 사용자가 앱에서 종료를 눌렀을 때 AI 서버의 연산 스레드를 중단시키기 위한 신호를 보냅니다.
+     * [STEP 4: AI 분석 중단 신호 송신]
+     * SessionService.endSession 의 afterCommit 콜백에서 호출됨 (ET-H, 분기 2.A.ET).
+     * 클라가 직접 호출하지 않음 — 단일 endpoint PATCH /sessions/{id}/end → Spring 이 분배.
+     * AI 가 누적 결과로 BT-SET final batch + CompleteAnalysis 콜백을 비동기로 처리.
      */
     public void stopAnalysis(Long sessionId) {
         log.info("AI 서버 분석 중단 요청 전송 - sessionId: {}", sessionId);

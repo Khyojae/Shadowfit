@@ -75,34 +75,15 @@ public class ExercisesController {
 
 
     /**
-     * 운동 세션 중단 요청
-     *
-     * 프론트가 종료 버튼을 누르면 Spring 이 AI 서버로 gRPC StopAnalysis 를
-     * 송신한다. AI 는 누적 결과를 정리해 CompleteAnalysis 로 다시 콜백하고,
-     * 최종 결과의 DB 영속화는 그 콜백에서 일어난다. 따라서 본 응답은 즉시
-     * 202 Accepted 만 반환하며, 프론트는 결과 조회 API 로 폴링/페치한다.
-     */
-    @Operation(
-            summary = "운동 세션 중단",
-            description = "프론트에서 종료 버튼을 누르면 AI 서버에 중단 신호를 보내고, AI 가 분석 결과를 비동기로 다시 보고한다."
-    )
-    @PutMapping("/sessions/{sessionId}/stop")
-    public ResponseEntity<Void> stopSession(@PathVariable Long sessionId) {
-        log.info("운동 세션 중단 요청 - sessionId: {}", sessionId);
-        analysisService.stopAnalysis(sessionId);
-        return ResponseEntity.accepted().build();
-    }
-
-
-    /**
-     * @deprecated /sessions/{id}/stop 으로 대체. 프론트 마이그레이션 완료 후 제거.
-     *     본 경로는 프론트가 자체 카운트한 결과를 DB 에 직접 반영하던 옛 흐름으로,
+     * @deprecated 클라가 자체 카운트한 결과를 DB에 직접 반영하던 옛 흐름.
      *     AI 분석 결과와 권위가 충돌해 일관성이 깨지는 문제가 있었다.
+     *     세션 종료는 `PATCH /sessions/{id}/end` (SessionController) 단일 endpoint 사용 —
+     *     Spring 이 endTime 기록 후 afterCommit 으로 AI 에 gRPC StopAnalysis 송신 (ET-H, 분기 2.A.ET).
      */
     @Deprecated
     @Operation(
             summary = "[Deprecated] 운동 세션 종료 요청",
-            description = "사용 자제. /sessions/{id}/stop 으로 대체될 예정."
+            description = "사용 자제. PATCH /sessions/{id}/end 로 대체됨 (ET-H, 분기 2.A.ET)."
     )
     @PutMapping("/sessions/{sessionId}/complete")
     public ResponseEntity<SessionUpdateResponseDto> completeSession(

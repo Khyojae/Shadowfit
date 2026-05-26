@@ -3,7 +3,7 @@ SET NAMES utf8mb4;
 
 -- 1. 기존 데이터 및 테이블 정리
 SET FOREIGN_KEY_CHECKS = 0;
-DROP TABLE IF EXISTS body_records, reports, daily_logs, pose_data, exercise_sessions, exercise_references, exercises, users;
+DROP TABLE IF EXISTS body_records, reports, daily_logs, pose_data, session_feedback_logs, exercise_feedback_templates, exercise_sessions, exercise_references, exercises, refresh_token, users;
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- 2. 사용자 테이블 (자바 Member 엔티티와 1:1 매칭)
@@ -80,11 +80,12 @@ CREATE TABLE IF NOT EXISTS exercise_feedback_templates (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     exercise_id BIGINT NOT NULL,
     feedback_type VARCHAR(30) NOT NULL,
+    persona VARCHAR(10) NULL,
     message VARCHAR(200) NOT NULL,
     priority INT NOT NULL DEFAULT 100,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (exercise_id) REFERENCES exercises(id) ON DELETE CASCADE,
-    UNIQUE KEY uk_exercise_feedback (exercise_id, feedback_type)
+    UNIQUE KEY uk_exercise_feedback_persona (exercise_id, feedback_type, persona)
 );
 
 CREATE TABLE IF NOT EXISTS session_feedback_logs (
@@ -95,7 +96,8 @@ CREATE TABLE IF NOT EXISTS session_feedback_logs (
     occurred_at DATETIME NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (session_id) REFERENCES exercise_sessions(id) ON DELETE CASCADE,
-    INDEX idx_session_feedback (session_id, occurred_at)
+    INDEX idx_session_feedback (session_id, occurred_at),
+    UNIQUE KEY uk_session_event (session_id, occurred_at, feedback_type)
 );
 
 -- 3. 데이터 삽입 시작
@@ -126,25 +128,41 @@ REPLACE INTO exercise_sessions (id, member_id, exercise_id, start_time, end_time
 (619, 1, 3, '2026-04-25 20:00:00', '2026-04-25 20:30:00', 95.0, 30, 140, 'COMPLETED', NOW());
 
 -- 3-A. 피드백 템플릿 시드 데이터 (운동별 자세 피드백 멘트)
--- 스쿼트 (id=1)
-INSERT INTO exercise_feedback_templates (exercise_id, feedback_type, message, priority) VALUES
-(1, 'KNEE_OUT', '무릎이 발끝보다 나가지 않게 해주세요', 10),
-(1, 'KNEE_IN', '무릎이 안쪽으로 모이지 않게 벌려주세요', 20),
-(1, 'HIP_HIGH', '엉덩이를 더 낮춰주세요', 30),
-(1, 'BACK_BENT', '허리를 곧게 펴주세요', 5);
+-- 스쿼트 (id=1) — 4 결함 × 4 페르소나 = 16 row (12-persona-difficulty.md 톤 가이드)
+INSERT INTO exercise_feedback_templates (exercise_id, feedback_type, persona, message, priority) VALUES
+-- KNEE_OUT (무릎이 발끝보다 나감)
+(1, 'KNEE_OUT', 'BEGINNER', '무릎이 발끝을 넘었어요. 살짝 뒤로 빼면 완벽해요', 10),
+(1, 'KNEE_OUT', 'ADVANCED', '무릎이 발끝 전방으로 벗어남. 발목 가동범위 조정 필요', 10),
+(1, 'KNEE_OUT', 'DIET',     '무릎 정렬 교정하면 자세가 안정되어 효율이 올라가요', 10),
+(1, 'KNEE_OUT', 'REHAB',    '무릎이 안전 범위를 벗어났습니다. 천천히 자세를 조정해주세요', 10),
+-- KNEE_IN (무릎이 안쪽으로 모임)
+(1, 'KNEE_IN',  'BEGINNER', '무릎이 안쪽으로 모였어요. 발끝 방향으로 살짝 벌려보세요', 20),
+(1, 'KNEE_IN',  'ADVANCED', '무릎 내전 발생. 둔근 외전 활성화 필요', 20),
+(1, 'KNEE_IN',  'DIET',     '무릎 방향만 잡으면 하체 전체에 자극이 들어가요', 20),
+(1, 'KNEE_IN',  'REHAB',    '무릎이 안쪽으로 들어가고 있습니다. 무리하지 말고 교정해주세요', 20),
+-- HIP_HIGH (엉덩이 과도하게 들림)
+(1, 'HIP_HIGH', 'BEGINNER', '엉덩이를 더 내려보세요. 깊게 앉을수록 효과가 커요', 30),
+(1, 'HIP_HIGH', 'ADVANCED', 'ROM 부족. 골반 후방 경사와 햄스트링 가동성 확인 필요', 30),
+(1, 'HIP_HIGH', 'DIET',     '더 깊게 앉으면 칼로리 소모가 늘어나요', 30),
+(1, 'HIP_HIGH', 'REHAB',    '안전한 범위 내에서 가능한 만큼만 내려가주세요', 30),
+-- BACK_BENT (등 굽음)
+(1, 'BACK_BENT','BEGINNER', '허리를 곧게 펴주세요. 가슴을 살짝 들면 도움돼요', 5),
+(1, 'BACK_BENT','ADVANCED', '흉추 굴곡 발생. 코어 활성화와 견갑골 안정화 필요', 5),
+(1, 'BACK_BENT','DIET',     '허리 자세 유지하면 부상 없이 운동을 지속할 수 있어요', 5),
+(1, 'BACK_BENT','REHAB',    '허리가 굽으면 부상 위험이 있습니다. 즉시 자세 교정해주세요', 5);
 
--- 런지 (id=2)
-INSERT INTO exercise_feedback_templates (exercise_id, feedback_type, message, priority) VALUES
-(2, 'KNEE_OUT', '앞 무릎이 발끝을 넘지 않게 해주세요', 10),
-(2, 'BACK_BENT', '상체를 곧게 세워주세요', 5),
-(2, 'HIP_HIGH', '뒷무릎을 더 굽혀주세요', 20);
+-- 런지 (id=2) — 페르소나 row 없음, NULL fallback 으로 호환 유지
+INSERT INTO exercise_feedback_templates (exercise_id, feedback_type, persona, message, priority) VALUES
+(2, 'KNEE_OUT',  NULL, '앞 무릎이 발끝을 넘지 않게 해주세요', 10),
+(2, 'BACK_BENT', NULL, '상체를 곧게 세워주세요', 5),
+(2, 'HIP_HIGH',  NULL, '뒷무릎을 더 굽혀주세요', 20);
 
--- 플랭크 (id=3)
-INSERT INTO exercise_feedback_templates (exercise_id, feedback_type, message, priority) VALUES
-(3, 'HIP_HIGH', '엉덩이를 너무 들지 마세요', 10),
-(3, 'HIP_LOW', '엉덩이가 처지지 않게 들어주세요', 10),
-(3, 'HEAD_DOWN', '고개를 너무 숙이지 마세요', 30),
-(3, 'BACK_BENT', '몸을 일직선으로 유지해주세요', 5);
+-- 플랭크 (id=3) — 페르소나 row 없음, NULL fallback 으로 호환 유지
+INSERT INTO exercise_feedback_templates (exercise_id, feedback_type, persona, message, priority) VALUES
+(3, 'HIP_HIGH',  NULL, '엉덩이를 너무 들지 마세요', 10),
+(3, 'HIP_LOW',   NULL, '엉덩이가 처지지 않게 들어주세요', 10),
+(3, 'HEAD_DOWN', NULL, '고개를 너무 숙이지 마세요', 30),
+(3, 'BACK_BENT', NULL, '몸을 일직선으로 유지해주세요', 5);
 
 -- 4. 리포트 데이터
 REPLACE INTO reports (id, session_id, member_id, report_type, summary, improvement_tips, created_at) VALUES

@@ -131,8 +131,8 @@ shadowfit/
 │   │   │   │   │   ├── PreferenceController.java      # TTS 설정 (`/preferences/tts`)
 │   │   │   │   │   ├── AdminExerciseController.java   # 임계값 변경 (`/admin/exercises/{id}/thresholds`)
 │   │   │   │   │   ├── FeedbackTemplateController.java # 피드백 멘트 (`/exercises/{id}/feedback-templates`)
-│   │   │   │   │   ├── InternalFeedbackController.java # AI → Spring 피드백 배치 (`/internal/feedback/batch`)
 │   │   │   │   │   └── TestController.java            # 시드 테스트 헬퍼
+│   │   │   │   │   # (AI → Spring 피드백 batch 는 gRPC `ExerciseGrpcService.reportFeedbackBatch` 사용 — REST endpoint 폐기 2026-05-26)
 │   │   │   │   ├── service/                   # 비즈니스 로직
 │   │   │   │   │   ├── Member/MemberService.java
 │   │   │   │   │   ├── Member/OnboardingService.java

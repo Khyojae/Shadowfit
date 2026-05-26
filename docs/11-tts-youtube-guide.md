@@ -8,7 +8,7 @@
 | 설정 조회/변경 API | `GET /preferences/tts`, `PATCH /preferences/tts` |
 | 운동별 멘트 마스터 | DB `exercise_feedback_templates`, `GET /exercises/{id}/feedback-templates` |
 | 실제 음성 합성·재생 | **클라이언트 device TTS** (`expo-speech`) — 서버는 TTS 오디오 합성하지 않음 |
-| 발화 이벤트 로그 | 클라이언트가 모아 AI 가 세션 종료 시 `POST /internal/feedback/batch` 로 일괄 전송 → `session_feedback_logs` 테이블 |
+| 발화 이벤트 로그 | AI 가 BT-SET 모델 (세트 경계 + 세션 종료 final) 로 gRPC `ExerciseService.ReportFeedbackBatch` 송신 → `session_feedback_logs` 테이블 |
 
 > 모든 멘트는 한국어 단일 ([`project-korean-only`](../../C:/Users/khjae/.claude/projects/E--init/memory/project_korean_only.md)). 다국어 분리 컬럼·로직 없음.
 

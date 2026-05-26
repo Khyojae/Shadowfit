@@ -116,19 +116,21 @@ CREATE TABLE IF NOT EXISTS reports (
     FOREIGN KEY (session_id) REFERENCES exercise_sessions(id) ON DELETE CASCADE
     );
 
--- 9-A. 운동별 피드백 메시지 템플릿 (TTS 멘트)
+-- 9-A. 운동별 피드백 메시지 템플릿 (TTS 멘트, 페르소나별 분기)
+-- persona NULL row 는 페르소나 row 없을 때 fallback 으로 사용 (분기 4-A + BE-13)
 CREATE TABLE IF NOT EXISTS exercise_feedback_templates (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     exercise_id BIGINT NOT NULL,
     feedback_type VARCHAR(30) NOT NULL,
+    persona VARCHAR(10) NULL,
     message VARCHAR(200) NOT NULL,
     priority INT NOT NULL DEFAULT 100,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (exercise_id) REFERENCES exercises(id) ON DELETE CASCADE,
-    UNIQUE KEY uk_exercise_feedback (exercise_id, feedback_type)
+    UNIQUE KEY uk_exercise_feedback_persona (exercise_id, feedback_type, persona)
 );
 
--- 9-B. 세션 피드백 발화 로그 (운동 중 TTS로 발화된 피드백 이벤트 기록)
+-- 9-B. 세션 피드백 판정 이벤트 로그 (AI 가 BT-SET 으로 batch 송신, 멱등성 보장)
 CREATE TABLE IF NOT EXISTS session_feedback_logs (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     session_id BIGINT NOT NULL,
@@ -137,7 +139,8 @@ CREATE TABLE IF NOT EXISTS session_feedback_logs (
     occurred_at DATETIME NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (session_id) REFERENCES exercise_sessions(id) ON DELETE CASCADE,
-    INDEX idx_session_feedback (session_id, occurred_at)
+    INDEX idx_session_feedback (session_id, occurred_at),
+    UNIQUE KEY uk_session_event (session_id, occurred_at, feedback_type)
 );
 
 -- 9. 신체 변화 기록 (user_id -> member_id 변경)

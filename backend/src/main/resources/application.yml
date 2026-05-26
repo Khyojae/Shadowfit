@@ -4,6 +4,10 @@ spring:
   profiles:
     active: prod
 
+  # 시간대 — 한국 전용 서비스 (협의 안건 #16, 갱신 15)
+  jackson:
+    time-zone: Asia/Seoul
+
   # [1] 데이터베이스 및 JPA 설정 (spring 하위로 정렬)
   datasource:
     url: jdbc:mysql://${DB_HOST:shadowfit-mysql}:${DB_PORT:3306}/${DB_NAME:shadowfit}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul&characterEncoding=UTF-8
