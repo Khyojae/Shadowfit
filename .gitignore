@@ -122,9 +122,6 @@ src/main/resources/application-local.properties
 /out/
 .gradle/
 
-#프론트 제외 (Dockerfile 과 .dockerignore 만 예외)
-frontend/*
-!frontend/Dockerfile
-!frontend/.dockerignore
+# 프론트 소스는 추적. node_modules/.expo/빌드물은 frontend/.gitignore 가 제외함.
 .agents/
 .backup-presync/
