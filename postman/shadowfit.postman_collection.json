@@ -219,9 +219,37 @@
     },
     {
       "name": "04. 운동 리포트 (/reports)",
+      "description": "각 요청에 검증 스크립트 포함. Collection Runner 로 01→02→04 순서로 돌리면, 02 에서 만든 진행중(IN_PROGRESS, endTime=null) 세션이 남아있는 상태로 주간 요약을 호출 → SessionService.getWeeklyActivity 의 dailyMins NPE 회귀를 자동 검증한다.",
       "item": [
         {
           "name": "주간 운동 요약",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// ⭐ 회귀 가드: 이번 주에 진행중(endTime=null) 세션이 있어도 Duration.between(start, null) NPE 로 500 나면 안 됨.",
+                  "pm.test('주간 요약 200 — 진행중 세션 있어도 NPE 없이 응답', function () {",
+                  "  pm.expect(pm.response.code, pm.response.text()).to.eql(200);",
+                  "});",
+                  "if (pm.response.code === 200) {",
+                  "  const j = pm.response.json();",
+                  "  pm.test('dailyLogs 는 요일 7개', function () { pm.expect(j.dailyLogs).to.have.lengthOf(7); });",
+                  "  pm.test('통계 필드는 숫자', function () {",
+                  "    pm.expect(j.totalWorkouts).to.be.a('number');",
+                  "    pm.expect(j.totalMinutes).to.be.a('number');",
+                  "    pm.expect(j.totalCalories).to.be.a('number');",
+                  "  });",
+                  "  pm.test('todayDetails 는 배열', function () { pm.expect(j.todayDetails).to.be.an('array'); });",
+                  "  console.log('📊 주간:', j.dateRange, '| workouts', j.totalWorkouts, '| min', j.totalMinutes, '| kcal', j.totalCalories);",
+                  "} else {",
+                  "  console.warn('❌ weekly-summary 실패', pm.response.code, pm.response.text());",
+                  "}"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "url": { "raw": "{{baseUrl}}/reports/weekly-summary", "host": ["{{baseUrl}}"], "path": ["reports", "weekly-summary"] }
@@ -229,6 +257,31 @@
         },
         {
           "name": "메인 달력 데이터",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('달력 200', function () { pm.expect(pm.response.code, pm.response.text()).to.eql(200); });",
+                  "if (pm.response.code === 200) {",
+                  "  const j = pm.response.json();",
+                  "  pm.test('year/month echo', function () { pm.expect(j.year).to.eql(2026); pm.expect(j.month).to.eql(5); });",
+                  "  pm.test('records 는 배열', function () { pm.expect(j.records).to.be.an('array'); });",
+                  "  pm.test('기록 있는 날은 hasRecord=true + 싱크로율 0~100', function () {",
+                  "    (j.records || []).forEach(function (r) {",
+                  "      pm.expect(r.hasRecord).to.eql(true);",
+                  "      if (r.dailyAvgSyncRate != null) pm.expect(r.dailyAvgSyncRate).to.be.within(0, 100);",
+                  "    });",
+                  "  });",
+                  "  console.log('🗓️ 달력:', j.monthlyExerciseDays, '일 운동 | 평균', j.totalAvgSyncRate, '% | 연속', j.consecutiveDays, '일 |', (j.records||[]).length, '일 기록');",
+                  "} else {",
+                  "  console.warn('❌ calendar 실패', pm.response.code, pm.response.text());",
+                  "}"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "url": {
@@ -243,7 +296,63 @@
           }
         },
         {
+          "name": "특정 날짜 운동 목록 (달력 일자 클릭)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// 달력에서 누른 날짜(여기선 오늘)를 YYYY-MM-DD 로 세팅",
+                  "const d = new Date();",
+                  "const iso = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');",
+                  "pm.variables.set('clickedDate', iso);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// 운동 없는 날도 sessions=[] 로 200 — 404/500 아님",
+                  "pm.test('일별 조회 200', function () { pm.expect(pm.response.code, pm.response.text()).to.eql(200); });",
+                  "if (pm.response.code === 200) {",
+                  "  const j = pm.response.json();",
+                  "  pm.test('sessions 는 배열', function () { pm.expect(j.sessions).to.be.an('array'); });",
+                  "  pm.test('totalWorkouts == sessions 길이', function () { pm.expect(j.totalWorkouts).to.eql(j.sessions.length); });",
+                  "  console.log('📆', j.date, '→', j.totalWorkouts, '세션:', (j.sessions || []).map(function (s) { return s.exerciseName; }));",
+                  "} else {",
+                  "  console.warn('❌ daily 실패', pm.response.code, pm.response.text());",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/reports/daily?date={{clickedDate}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["reports", "daily"],
+              "query": [{ "key": "date", "value": "{{clickedDate}}" }]
+            },
+            "description": "달력에서 날짜 클릭 시 호출. 그 날 운동 세션 목록 반환. 빈 날도 sessions=[] 로 200. date 는 ISO (YYYY-MM-DD)."
+          }
+        },
+        {
           "name": "운동 메모 저장",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('메모 저장 204 No Content', function () { pm.expect(pm.response.code).to.be.oneOf([204, 200]); });"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
@@ -257,6 +366,30 @@
         },
         {
           "name": "일별 운동 보고서 (session 단위)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// 진행중/리포트 미생성 세션은 404(REPORT_NOT_FOUND)가 정상. 핵심은 500(NPE/서버오류)이 아닌 것.",
+                  "pm.test('상세 보고서 — 500 아님 (200 또는 미생성 404)', function () {",
+                  "  pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([200, 404]);",
+                  "});",
+                  "if (pm.response.code === 200) {",
+                  "  const j = pm.response.json();",
+                  "  pm.test('필수 필드 존재', function () {",
+                  "    pm.expect(j).to.have.property('avgSyncRate');",
+                  "    pm.expect(j).to.have.property('syncRateDetails');",
+                  "  });",
+                  "  console.log('📄 상세: sync', j.avgSyncRate, '% | reps', j.totalReps, '| min', j.workoutMinutes);",
+                  "} else {",
+                  "  console.log('ℹ️ 상세 보고서 미생성(진행중이거나 AI 리포트 없음):', pm.response.code);",
+                  "}"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "url": { "raw": "{{baseUrl}}/reports/session/{{sessionId}}", "host": ["{{baseUrl}}"], "path": ["reports", "session", "{{sessionId}}"] }

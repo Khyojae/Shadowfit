@@ -1,6 +1,7 @@
 package com.shadowfit.controller;
 
 import com.shadowfit.dto.report.record.CalendarMainResponseDto;
+import com.shadowfit.dto.report.record.DailyActivityResponseDto;
 import com.shadowfit.dto.report.record.DailyLogRequestDto;
 import com.shadowfit.dto.report.record.WeeklyActivityResponseDto;
 import com.shadowfit.global.security.auth.CustomUserDetails;
@@ -10,10 +11,13 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDate;
 
 @Tag(name = "운동 활동 관리", description = "메인페이지 운동 활동 관리")
 @RestController
@@ -41,6 +45,16 @@ public class ExerciseRecordController {
             @RequestParam int month) {
         Long memberId = customUserDetails.getMember().getId();
         CalendarMainResponseDto response = sessionService.getCalendarMain(memberId, year, month);
+        return ResponseEntity.ok(response);
+    }
+
+    @Operation(summary="특정 날짜 운동 목록", description = "달력에서 날짜 클릭 시 그 날의 운동 세션 목록 조회. 빈 날은 sessions=[] 반환")
+    @GetMapping("/daily")
+    public ResponseEntity<DailyActivityResponseDto> getDailyActivity(
+            @AuthenticationPrincipal CustomUserDetails customUserDetails,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        Long memberId = customUserDetails.getMember().getId();
+        DailyActivityResponseDto response = sessionService.getDailyActivity(memberId, date);
         return ResponseEntity.ok(response);
     }
 

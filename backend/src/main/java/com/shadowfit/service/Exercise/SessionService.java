@@ -2,8 +2,10 @@ package com.shadowfit.service.Exercise;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.shadowfit.dto.exercises.VideoRequestDto;
+import com.shadowfit.dto.report.detailreport.ExerciseSessionDto;
 import com.shadowfit.dto.report.record.CalendarDayDto;
 import com.shadowfit.dto.report.record.CalendarMainResponseDto;
+import com.shadowfit.dto.report.record.DailyActivityResponseDto;
 import com.shadowfit.dto.report.record.DailyLogSummaryDto;
 import com.shadowfit.dto.report.record.WeeklyActivityResponseDto;
 import com.shadowfit.global.error.BusinessException;
@@ -208,7 +210,7 @@ public class SessionService {
             LocalDate date = startOfWeek.plusDays(i);
             int dailyMins = weeklySessions.stream()
                     .filter(s -> s.getStartTime() != null && s.getStartTime().toLocalDate().equals(date))
-                    .mapToInt(s -> (int) java.time.Duration.between(s.getStartTime(), s.getEndTime()).toMinutes())
+                    .mapToInt(this::calculateDuration) // endTime == null(진행중 세션) NPE 방어 — totalMinutes 블록과 동일 가드
                     .sum();
 
             dailyLogs.add(new DailyLogSummaryDto(
@@ -218,22 +220,9 @@ public class SessionService {
             ));
         }
 
-        List<com.shadowfit.dto.report.detailreport.ExerciseSessionDto> todayDetails = weeklySessions.stream()
+        List<ExerciseSessionDto> todayDetails = weeklySessions.stream()
                 .filter(s -> s.getStartTime() != null && s.getStartTime().toLocalDate().equals(today))
-                .map(s -> {
-                    com.shadowfit.dto.report.detailreport.ExerciseSessionDto detail = new com.shadowfit.dto.report.detailreport.ExerciseSessionDto();
-
-                    detail.setSessionId(s.getId());
-                    detail.setExerciseName(s.getExercise().getName());
-
-                    // 🚩 세트와 횟수를 하나의 문자열로 합쳐서 세팅!
-                    // 세트 정보가 DB에 따로 없다면 일단 0세트나 횟수만 표시하게끔 처리합니다.
-                    detail.setSetSummary(String.format("0세트 x %d회", s.getTotalReps()));
-
-                    detail.setSyncRate(s.getAvgSyncRate() != null ? s.getAvgSyncRate().doubleValue() : 0.0);
-
-                    return detail;
-                })
+                .map(this::toSessionDto)
                 .collect(Collectors.toList());
 
         return WeeklyActivityResponseDto.builder()
@@ -294,6 +283,36 @@ public class SessionService {
         response.setRecords(dayDtos);
 
         return response;
+    }
+
+    // 달력에서 특정 날짜 클릭 시 그 날의 운동 목록 조회.
+    // 주간 요약의 todayDetails 와 동일한 매핑(toSessionDto)을 재사용 — 오늘/과거 날짜 구분 없이 일관.
+    @Transactional(readOnly = true)
+    public DailyActivityResponseDto getDailyActivity(Long memberId, LocalDate date) {
+        List<Session> sessions = sessionRepository.findByMemberIdAndStartTimeBetween(
+                memberId, date.atStartOfDay(), date.atTime(23, 59, 59));
+
+        List<ExerciseSessionDto> details = sessions.stream()
+                .filter(s -> s.getStartTime() != null)
+                .map(this::toSessionDto)
+                .collect(Collectors.toList());
+
+        return DailyActivityResponseDto.builder()
+                .date(date.toString())
+                .totalWorkouts(details.size())
+                .sessions(details)
+                .build();
+    }
+
+    // Session → ExerciseSessionDto 공용 매핑 (주간 todayDetails / 일별 조회 공유)
+    private ExerciseSessionDto toSessionDto(Session s) {
+        ExerciseSessionDto detail = new ExerciseSessionDto();
+        detail.setSessionId(s.getId());
+        detail.setExerciseName(s.getExercise().getName());
+        // 세트 정보가 DB에 따로 없어 횟수만 표시 (BE-09 세트 도입 시 확장)
+        detail.setSetSummary(String.format("0세트 x %d회", s.getTotalReps()));
+        detail.setSyncRate(s.getAvgSyncRate() != null ? s.getAvgSyncRate().doubleValue() : 0.0);
+        return detail;
     }
 
     private int calculateDuration(Session session) {
