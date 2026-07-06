@@ -10,9 +10,8 @@
 
 ## 이 레포에 대해
 
-[ShadowFit](https://github.com/SMU-2026-1-capstone-project)은 4인 팀 캡스톤 프로젝트(React Native + Spring Boot + FastAPI)입니다. 이 레포는 그 팀 프로젝트의 개인 포크로, **제가 담당한 백엔드(Spring) 작업과 DB 엔지니어링 실험을 정리**해 백엔드 신입 포지션 지원용으로 씁니다.
+[ShadowFit](https://github.com/SMU-2026-1-capstone-project)은 3인 팀 캡스톤 프로젝트(React Native + Spring Boot + FastAPI)입니다. 이 레포는 그 팀 프로젝트의 개인 포크로, **제가 담당한 백엔드(Spring) 작업과 DB 엔지니어링 실험을 정리**했습니다
 
-> AI 분석(MediaPipe·DTW)과 TTS는 이 앱의 무대(substrate)일 뿐 제 셀링 포인트가 아닙니다. 아래 내용은 전부 **백엔드/DB 축**입니다.
 
 ---
 
