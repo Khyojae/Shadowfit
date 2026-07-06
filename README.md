@@ -1,6 +1,6 @@
 <div align="center">
 
-# ShadowFit — Backend (Spring) 포트폴리오 노트
+# ShadowFit — Backend (Spring)
 
 **"시계열 쓰기-헤비 워크로드 위에서, 두 서비스에 걸친 운동 세션 상태를 동시성 정합성 있게 관리하고, 그 데이터 계층을 production 기준으로 깊게 엔지니어링한 백엔드."**
 
