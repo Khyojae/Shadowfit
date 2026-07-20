@@ -105,8 +105,6 @@ sequenceDiagram
 
 **직접 재현·검증**: 같은 패턴(동시 read-modify-write)을 별도 스크립트로 재현해, naive read-modify-write는 갱신이 유실(commit 순서에 따라 두 값 중 하나만 남음)되지만 원자적 UPDATE·비관적 락(`SELECT ... FOR UPDATE`)·낙관적 락(CAS) 세 가지 방식은 모두 정확한 값을 복구함을 `performance_schema.data_locks`로 락 상태까지 관찰해 확인했습니다. MVCC 격리수준(REPEATABLE READ vs READ COMMITTED vs SERIALIZABLE)도 같은 방식으로 비교해, RC만으로는 lost-update를 막지 못한다는 것과 SERIALIZABLE이 읽기까지 잠가 직렬화 비용을 만든다는 것을 직접 관찰했습니다.
 
-> **"동시성 처리했어요"가 아니라, 왜 낙관적 락을 골랐는지(저경합·블로킹 회피)를 실험으로 증명하는 쪽입니다.** 남들이 흔한 "선착순 쿠폰" 예제로 동시성을 붙일 때, 이 프로젝트는 두 서비스 경계에서 동시성 문제가 도메인 자연스럽게 발생했고, 그걸 발동/미발동으로 갈라 측정했다는 점이 차이입니다.
-
 ---
 
 ## 🔬 DB 엔지니어링 실험
@@ -122,8 +120,6 @@ sequenceDiagram
 | **파티셔닝 + FK 트레이드오프** | "1억 행이니까 파티션"이 아니라 세션 단위 조회는 pruning 이득 0임을 먼저 반증. 유일한 정당화는 TTL(오래된 raw 폐기). MySQL/InnoDB가 FK+파티션을 동시지원 안 해서(`ERROR 1506`) FK를 제거하고 대체로 비동기 정리 서비스(`PoseDataCleanupService`)를 설계해 실스키마에 반영 | `DROP PARTITION` vs `DELETE` 로컬 대조 **약 421~625배**. TTL 자동 만료 스케줄러(`@Scheduled`)는 아직 미구현, 스키마·정리 로직만 완료 |
 | **버퍼풀 / read-ahead 함정** | 순차 스캔에서 InnoDB read-ahead가 표준 hit율 공식(1−reads/read_requests)을 왜곡해 거짓으로 99%대를 보여줌. AWS(m6i.xlarge, 실제 2.3KB JSON)로 재검증 | 로컬: 작업셋(540MB) > 버퍼풀(128MB) → warm에도 매번 ~485MB 재읽기. AWS: 작업셋(8.19GB)이 버퍼풀(2GB)보다 크면 cold 675.2초 vs warm 675.85초(캐시 이득 0), 작업셋(19MB)이 버퍼풀보다 작으면 warm 0.461초·디스크 0바이트(3.4배). naive hit율 공식은 95.36%로 나오지만 실제 물리 I/O는 cold·warm 동일 |
 | **JSON 트림** | MediaPipe가 33개 관절을 전부 저장하지만 실제 사용은 13개뿐인 것을 코드로 확인, 사용 컬럼만 추출 | 평균 페이로드 **2,344B → 916B (−60.9%)** |
-
-> 정직한 한계: 합성 데이터가 단일 템플릿 복제라 **값 분포(카디널리티)는 균일**합니다. 행수·payload 크기 의존 실험(위 표)은 유효하지만, 값 분포에 의존하는 실험(선택도, 옵티마이저 카디널리티 추정)은 의도적으로 수행하지 않았습니다.
 
 ---
 
