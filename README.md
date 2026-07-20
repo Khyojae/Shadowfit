@@ -28,10 +28,10 @@
 
 ```mermaid
 graph LR
-    FE["📱 App"]
-    AI["🤖 AI Server"]
-    BE["⚙️ Spring Boot"]
-    DB[("🗄️ MySQL")]
+    FE["App"]
+    AI["AI Server"]
+    BE["Spring Boot"]
+    DB[("MySQL")]
 
     FE -- "프레임 스트리밍" --> AI
     AI -- "분석 콜백" --> BE
@@ -45,10 +45,10 @@ graph LR
 
 ```mermaid
 flowchart TD
-    YT["YouTube 기준 영상"] -->|"youtube_url"| Extract["🤖 AI: 관절 좌표 추출"]
+    YT["YouTube 기준 영상"] -->|"youtube_url"| Extract["AI: 관절 좌표 추출"]
     Extract -->|"jointCoordinates 시계열"| RefDB[("exercise_reference")]
 
-    Cam["📱 카메라 프레임 (base64)"] -->|"POST /pose"| MP["🤖 MediaPipe 추론"]
+    Cam["카메라 프레임 (base64)"] -->|"POST /pose"| MP["MediaPipe 추론"]
     RefDB -.->|"세션 시작 시 조회"| DTW
     MP --> DTW["DTW 비교 + syncRate 계산"]
     DTW -->|"rep 완성 시 배치"| PoseDB[("pose_data<br/>jointCoordinates · syncRate · feedbackMessage")]
@@ -92,11 +92,11 @@ flowchart TD
 
 ```mermaid
 sequenceDiagram
-    participant App as 📱 App
-    participant AI as 🤖 FastAPI
-    participant BE as ⚙️ Spring
-    participant DB as 🗄️ MySQL
-    participant T as ⏰ TimeoutScheduler
+    participant App as App
+    participant AI as FastAPI
+    participant BE as Spring
+    participant DB as MySQL
+    participant T as TimeoutScheduler
 
     App->>BE: PATCH /sessions/{id}/end
     BE->>DB: endTime 기록 (commit)
