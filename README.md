@@ -8,6 +8,22 @@
 
 ---
 
+## 🛠 기술 스택
+
+![Java](https://img.shields.io/badge/JAVA_21-ED8B00?style=flat-square&logo=openjdk&logoColor=white)
+![Spring Boot](https://img.shields.io/badge/SPRING_BOOT_3.4-6DB33F?style=flat-square&logo=springboot&logoColor=white)
+![MySQL](https://img.shields.io/badge/MYSQL_8-4479A1?style=flat-square&logo=mysql&logoColor=white)
+![JPA](https://img.shields.io/badge/JPA-59666C?style=flat-square&logo=hibernate&logoColor=white)
+![gRPC](https://img.shields.io/badge/GRPC-244C5A?style=flat-square&logo=grpc&logoColor=white)
+![JWT](https://img.shields.io/badge/JWT-000000?style=flat-square&logo=jsonwebtokens&logoColor=white)
+![Spring Security](https://img.shields.io/badge/SPRING_SECURITY-6DB33F?style=flat-square&logo=springsecurity&logoColor=white)
+![Docker](https://img.shields.io/badge/DOCKER-2496ED?style=flat-square&logo=docker&logoColor=white)
+![AWS](https://img.shields.io/badge/AWS-232F3E?style=flat-square&logo=amazonaws&logoColor=white)
+
+**적재/부하 측정**: `ghz`(gRPC 부하), `performance_schema`/`sys`(락·I/O 관측), `EXPLAIN ANALYZE`
+
+---
+
 ## 🧩 아키텍처
 
 ```mermaid
@@ -137,37 +153,3 @@ sequenceDiagram
 
 > "다 막았다"가 아니라 **"뭐가 어떻게 깨지는지 알고, 뭘 아직 안 막았는지 정직하게 아는 것"**이 이 표의 목적입니다.
 
----
-
-## 정직한 포지셔닝
-
-**substrate 구분**
-MediaPipe 자세 추출·DTW 비교·TTS는 이 앱의 기능이지 제 백엔드 실력 증명 대상이 아닙니다. 위 내용은 전부 Spring/MySQL 영역입니다.
-
-**DAU 1,000 가정**
-"동시 사용자가 적어서 드물다"로 회피하지 않고, DAU 1,000명이라는 구체적 가정을 못박은 뒤 그 기준으로 동시성·부하를 설계했습니다. 다만 이건 정합성 메커니즘을 증명하기 위한 가정이지, "N 동시 부하 TPS 실측"을 자랑하는 것과는 구분합니다(단일 클라이언트 측정).
-
-**합성 데이터 한계**
-값 분포가 균일한 합성 데이터라는 한계를 알고, 분포에 의존하는 실험은 하지 않았습니다.
-
-**개발 환경 제약**
-로컬 물리 2코어(i3-6100) 환경에 MySQL·백엔드·부하 생성기가 동거하기 때문에, 절대 RPS·처리량 수치는 그 환경에 종속적입니다. 위에서 인용한 수치는 절대치가 아니라 **메커니즘과 상대적 개선폭(before/after)**으로만 신뢰해 주세요.
-
-**MySQL을 쓰는 이유**
-"이 워크로드가 MySQL에 기술적으로 유리해서"라는 주장 세 가지(클러스터드 인덱스, 파티션 DROP, JSON off-page)를 스스로 검토했는데, 전부 PostgreSQL도 동등한 매커니즘(힙 테이블 자연 append, 선언적 파티셔닝 DETACH+DROP, TOAST)을 가진다는 걸 확인해 과장이었음을 인정합니다. MySQL을 유지하는 진짜 이유는 기술 우위가 아니라 이미 이 수치들로 실측·문서화된 자산이 있고, 국내 백엔드 신입 채용에서 흔히 쓰이는 스택이기 때문입니다.
-
----
-
-## 🛠 기술 스택
-
-![Java](https://img.shields.io/badge/JAVA_21-ED8B00?style=flat-square&logo=openjdk&logoColor=white)
-![Spring Boot](https://img.shields.io/badge/SPRING_BOOT_3.4-6DB33F?style=flat-square&logo=springboot&logoColor=white)
-![MySQL](https://img.shields.io/badge/MYSQL_8-4479A1?style=flat-square&logo=mysql&logoColor=white)
-![JPA](https://img.shields.io/badge/JPA-59666C?style=flat-square&logo=hibernate&logoColor=white)
-![gRPC](https://img.shields.io/badge/GRPC-244C5A?style=flat-square&logo=grpc&logoColor=white)
-![JWT](https://img.shields.io/badge/JWT-000000?style=flat-square&logo=jsonwebtokens&logoColor=white)
-![Spring Security](https://img.shields.io/badge/SPRING_SECURITY-6DB33F?style=flat-square&logo=springsecurity&logoColor=white)
-![Docker](https://img.shields.io/badge/DOCKER-2496ED?style=flat-square&logo=docker&logoColor=white)
-![AWS](https://img.shields.io/badge/AWS-232F3E?style=flat-square&logo=amazonaws&logoColor=white)
-
-**적재/부하 측정**: `ghz`(gRPC 부하), `performance_schema`/`sys`(락·I/O 관측), `EXPLAIN ANALYZE`
