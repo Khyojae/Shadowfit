@@ -15,6 +15,66 @@
 
 ---
 
+## 🧩 아키텍처
+
+```mermaid
+graph LR
+    FE["📱 App"]
+    AI["🤖 AI Server"]
+    BE["⚙️ Spring Boot"]
+    DB[("🗄️ MySQL")]
+
+    FE -- "프레임 스트리밍" --> AI
+    AI -- "분석 콜백" --> BE
+    FE -- "세션 시작/중단" --> BE
+    BE --> DB
+```
+
+프론트는 카메라 프레임을 AI 서버에 직접 스트리밍하고, AI 서버는 gRPC 콜백으로 결과를 Spring에 전달합니다. 세션 시작/중단만 프론트→Spring→AI로 한 단계 거칩니다.
+
+## 🔀 데이터 플로우
+
+```mermaid
+flowchart TD
+    YT["YouTube 기준 영상"] -->|"youtube_url"| Extract["🤖 AI: 관절 좌표 추출"]
+    Extract -->|"jointCoordinates 시계열"| RefDB[("exercise_reference")]
+
+    Cam["📱 카메라 프레임 (base64)"] -->|"POST /pose"| MP["🤖 MediaPipe 추론"]
+    RefDB -.->|"세션 시작 시 조회"| DTW
+    MP --> DTW["DTW 비교 + syncRate 계산"]
+    DTW -->|"rep 완성 시 배치"| PoseDB[("pose_data<br/>jointCoordinates · syncRate · feedbackMessage")]
+    DTW -.->|"설계됨 · 미연동"| FeedbackDB[("session_feedback_log")]
+
+    PoseDB -->|"세션 종료 시 집계"| SessionDB[("session<br/>totalReps · avgSyncRate · calories")]
+
+    PoseDB -->|"3프레임 슬라이딩 윈도우"| Weak["취약 구간 탐지"]
+    SessionDB -->|"직전 세션과 비교"| Weak
+    Weak --> Report["세션 리포트"]
+    SessionDB -->|"주/월 단위 집계"| Weekly["주간요약 · 달력"]
+    DailyLogDB[("daily_log<br/>memo · mood")] --> Weekly
+```
+
+카메라 프레임은 AI 서버 내부에서 관절 좌표로 변환된 뒤 rep 단위로만 Spring에 저장되고, 세션 리포트·주간요약·달력은 모두 이 `pose_data`/`session` 테이블에서 파생됩니다.
+
+## 🔌 대표 API
+
+| Method | Endpoint | 설명 |
+| :--- | :--- | :--- |
+| `POST` | `/exercises/sessions` | 운동 세션 시작 (DB 생성 후 202 즉시 응답, gRPC 송신은 비동기) |
+| `PATCH` | `/sessions/{sessionId}/end` | 세션 종료 (단일 엔드포인트, 커밋 후 AI에 비동기 통보) |
+| `POST` | `/exercises/{exerciseId}/reference` | YouTube 기준 동작 좌표 추출 요청 |
+| `GET` `PATCH` | `/preferences/tts` | TTS 사용 여부·속도 조회/변경 |
+| `GET` | `/exercises/{exerciseId}/feedback-templates` | 운동별 피드백 멘트 조회 |
+| `GET` | `/reports/calendar` | 달력 기반 월별 운동 기록 |
+| `GET` | `/reports/weekly-summary` | 주간 활동 요약 |
+| `POST` | `/reports/daily-logs` | 운동 일지 작성 |
+| `GET` | `/reports/session/{sessionId}` | 세션별 상세 리포트(취약 구간·이전 세션 비교) |
+| `PATCH` | `/admin/exercises/{exerciseId}/thresholds` | 페르소나별 싱크로율 임계값 조정 (관리자) |
+
+전체 스펙은 로컬 기동 후 Swagger(`/swagger-ui`)에서 확인할 수 있습니다.
+
+---
+
 ## 🎯 헤드라인 — 운동 세션 생명주기의 분산 정합성
 
 **문제**: 운동 세션 상태가 Spring(Java)과 FastAPI(Python) 두 서비스에 걸쳐 있습니다. 세션 종료 시점에 서로 다른 두 주체가 같은 레코드를 동시에 건드릴 수 있습니다.
@@ -62,11 +122,11 @@ sequenceDiagram
 
 | 실험 | 발견 | 수치 |
 | :--- | :--- | :--- |
-| **인덱스 검증** | "인덱스 추가하면 빨라진다"는 가설을 먼저 세웠으나, `EXPLAIN ANALYZE`로 이미 최적(covering index, filesort 없음)임을 확인하고 가설을 폐기. 강제 풀스캔과 대조해 인덱스의 실제 역할을 검증 | 인덱스 스캔 vs 강제 풀스캔 **4.1M 행 = 85초** |
+| **인덱스 검증** | "인덱스 추가하면 빨라진다"는 가설을 먼저 세웠으나, `EXPLAIN ANALYZE`로 이미 최적(covering index, filesort 없음)임을 확인하고 가설을 폐기. `IGNORE INDEX`로 강제 풀스캔과 직접 대조(`SET profiling`으로 wall-clock 오염 배제) | 실제 2.1KB payload 기준 인덱스 있음 vs 강제 풀스캔 **약 9,000배**(412만 행), 1억 행 재검증 시 풀스캔 **2,120.9초**까지 O(N) 선형 확인 |
 | **배치 INSERT** | `JdbcTemplate.batchUpdate`로 전환(JPA `saveAll`은 `IDENTITY` PK 때문에 Hibernate batch가 원천 차단되는 걸 확인 후 우회) | throughput **+99%**, p99 **−37%** |
-| **Projection (JSON off-page)** | 리포트 조회가 쓰지도 않는 JSON 컬럼(2.3KB)까지 통째로 로드하고 있었음. JSON이 InnoDB off-page(오버플로우 페이지)에 저장돼 추가 랜덤 I/O가 발생한다는 걸 확인하고 3컬럼 projection으로 전환 | payload **1,716.8KB → 22.4KB (−98.7%)**, 쿼리 **12.1ms → 1.5ms** |
-| **페이지네이션 (offset vs keyset)** | 1억 행 위에서 offset은 깊이에 비례해 선형으로 느려지고(O(N)), keyset(cursor)은 깊이와 무관하게 평탄함을 실측 | offset 5,000만 지점 **26초** vs keyset **0.05ms** |
-| **파티셔닝 (TTL 용도)** | "1억 행이니까 파티션"이 아니라, 세션 단위 조회는 파티션 pruning 이득이 0임을 먼저 확인(정직한 반증). 유일한 정당화는 오래된 raw 데이터를 버리는 TTL 용도 | 동일 ~800만 행 만료: `DELETE` **18.6분**(빈 파일 잔존) vs `DROP PARTITION` **1.8초** |
+| **Projection (JSON off-page)** | 리포트 조회가 쓰지도 않는 JSON 컬럼(2.3KB)까지 통째로 로드하고 있었음. off-page(오버플로우 페이지) 랜덤 I/O를 3컬럼 projection으로 회피. AWS(m6i.xlarge)에서 **실제 1억 행 × 실제 2.3KB JSON**으로 재검증까지 완료 | payload **1,740.1KB → 22.6KB (−98.7%)**, warm 쿼리 **40.6ms → 1.4ms(최대 41배)** — 단, 이 쿼리는 사용자 조회가 아니라 세션 종료 시 1회 도는 비동기 precompute라 "체감 지연 감소"가 아니라 "반복 배치 잡의 자원 소모 감소"가 정확한 의미 |
+| **페이지네이션 (offset vs keyset)** | 1억 행 위에서 offset은 깊이에 비례해 선형으로 느려지고(O(N)), keyset(cursor)은 깊이와 무관하게 평탄함을 실측. 실제 JSON(2.3KB)으로 재검증하면 페이지당 담기는 행 수가 줄어 더미 데이터보다 저하폭이 커짐을 확인 | 더미 데이터 offset 5,000만 지점 **26초** vs 실제 JSON 동일 지점 **941초(약 36배 악화)**, keyset은 두 경우 모두 **0.05ms대 평탄** |
+| **파티셔닝 + FK 트레이드오프** | "1억 행이니까 파티션"이 아니라 세션 단위 조회는 pruning 이득 0임을 먼저 반증. 유일한 정당화는 TTL(오래된 raw 폐기)이며, MySQL/InnoDB가 FK+파티션을 동시지원하지 않아(`ERROR 1506`) FK를 제거하고 그 대체로 비동기 정리 서비스(`PoseDataCleanupService`)를 설계해 실스키마에 반영 완료 | `DROP PARTITION` vs `DELETE` 로컬 대조 **약 421~625배**. TTL 자동 만료 스케줄러(`@Scheduled`)는 다음 과제로 남김(스키마·정리 로직은 구현 완료, 자동 트리거만 미구현) |
 | **버퍼풀 / read-ahead 함정** | 순차 스캔에서 InnoDB read-ahead가 표준 hit율 공식(1−reads/read_requests)을 왜곡해 거짓으로 99%대를 보여준다는 걸 발견. 실제 물리 I/O는 바이트 단위 지표로 봐야 함을 확인 | 작업셋(540MB) > 버퍼풀(128MB) → warm에도 매번 ~485MB 재읽기 |
 | **JSON 트림** | MediaPipe가 33개 관절을 전부 저장하지만 실제 사용은 13개뿐인 것을 코드로 확인, 사용 컬럼만 추출 | 평균 페이로드 **2,344B → 916B (−60.9%)** |
 
