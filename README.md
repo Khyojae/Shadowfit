@@ -1,6 +1,6 @@
 <div align="center">
 
-# ShadowFit — Backend (Spring)
+# ShadowFit Backend (Spring)
 
 **"시계열 쓰기-헤비 워크로드 위에서, 두 서비스에 걸친 운동 세션 상태를 동시성 정합성 있게 관리하고, 그 데이터 계층을 production 기준으로 깊게 엔지니어링한 백엔드."**
 
@@ -8,7 +8,7 @@
 
 ---
 
-## 🛠 기술 스택
+## 기술 스택
 
 ![Java](https://img.shields.io/badge/JAVA_21-ED8B00?style=flat-square&logo=openjdk&logoColor=white)
 ![Spring Boot](https://img.shields.io/badge/SPRING_BOOT_3.4-6DB33F?style=flat-square&logo=springboot&logoColor=white)
@@ -24,7 +24,7 @@
 
 ---
 
-## 🧩 아키텍처
+## 아키텍처
 
 ```mermaid
 graph LR
@@ -41,7 +41,7 @@ graph LR
 
 프론트는 카메라 프레임을 AI 서버에 직접 스트리밍하고, AI 서버는 gRPC 콜백으로 결과를 Spring에 전달합니다. 세션 시작/중단만 프론트→Spring→AI로 한 단계 거칩니다.
 
-## 🔀 데이터 플로우
+## 데이터 플로우
 
 ```mermaid
 flowchart TD
@@ -65,7 +65,7 @@ flowchart TD
 
 카메라 프레임은 AI 서버 내부에서 관절 좌표로 변환된 뒤 rep 단위로만 Spring에 저장되고, 세션 리포트·주간요약·달력은 모두 이 `pose_data`/`session` 테이블에서 파생됩니다.
 
-## 🔌 대표 API
+## 대표 API
 
 | Method | Endpoint | 설명 |
 | :--- | :--- | :--- |
@@ -84,7 +84,7 @@ flowchart TD
 
 ---
 
-## 🎯 헤드라인 — 운동 세션 생명주기의 분산 정합성
+## 운동 세션 생명주기의 분산 정합성
 
 **문제**: 운동 세션 상태가 Spring(Java)과 FastAPI(Python) 두 서비스에 걸쳐 있습니다. 세션 종료 시점에 서로 다른 두 주체가 같은 레코드를 동시에 건드릴 수 있습니다.
 - **타임아웃 스케줄러**(`SessionTimeoutScheduler`): "너무 오래 안 끝남 → `FAILED`"
@@ -115,15 +115,15 @@ sequenceDiagram
 ```
 
 **해결**(실제 코드):
-- **afterCommit 외부 호출** — DB 커밋이 확정된 뒤에만 AI에 gRPC를 쏩니다(`SessionService.endSession`이 `TransactionSynchronization.afterCommit`에서 `analysisService.stopAnalysis` 호출). 트랜잭션 안에 외부 호출이 끼지 않게 하는 원칙입니다.
-- **`@Version` 낙관적 락** — `Session` 엔티티에 버전 컬럼을 두고, 스케줄러와 콜백이 동시에 갱신을 시도하면 낙관적 락 예외로 충돌을 감지합니다. `completeSession`은 충돌 시 최대 3회 재시도하고, 콜백(AI) 결과를 우선시합니다.
-- **멱등 수신** — `applyComplete`는 이미 `COMPLETED`인 세션이면 즉시 반환(first-write-wins). 네트워크 재시도로 같은 콜백이 중복 도착해도 안전합니다.
+- **afterCommit 외부 호출**: DB 커밋이 확정된 뒤에만 AI에 gRPC를 쏩니다(`SessionService.endSession`이 `TransactionSynchronization.afterCommit`에서 `analysisService.stopAnalysis` 호출). 트랜잭션 안에 외부 호출이 끼지 않게 하는 원칙입니다.
+- **`@Version` 낙관적 락**: `Session` 엔티티에 버전 컬럼을 두고, 스케줄러와 콜백이 동시에 갱신을 시도하면 낙관적 락 예외로 충돌을 감지합니다. `completeSession`은 충돌 시 최대 3회 재시도하고, 콜백(AI) 결과를 우선시합니다.
+- **멱등 수신**: `applyComplete`는 이미 `COMPLETED`인 세션이면 즉시 반환(first-write-wins). 네트워크 재시도로 같은 콜백이 중복 도착해도 안전합니다.
 
 **직접 재현·검증**: 같은 패턴(동시 read-modify-write)을 별도 스크립트로 재현해, naive read-modify-write는 갱신이 유실(commit 순서에 따라 두 값 중 하나만 남음)되지만 원자적 UPDATE·비관적 락(`SELECT ... FOR UPDATE`)·낙관적 락(CAS) 세 가지 방식은 모두 정확한 값을 복구함을 `performance_schema.data_locks`로 락 상태까지 관찰해 확인했습니다. MVCC 격리수준(REPEATABLE READ vs READ COMMITTED vs SERIALIZABLE)도 같은 방식으로 비교해, RC만으로는 lost-update를 막지 못한다는 것과 SERIALIZABLE이 읽기까지 잠가 직렬화 비용을 만든다는 것을 직접 관찰했습니다.
 
 ---
 
-## 🔬 DB 엔지니어링 실험
+## DB 엔지니어링 실험
 
 전제: DAU 1,000명을 가정한 합성 데이터로 `pose_data` 테이블에 **1억 행(133,334세션 × 750행, ~11GB)**을 로컬(더미 JSON)에 시딩해 실험했고, 핵심 결과는 AWS EC2(m6i.xlarge)에서 **실제 2.3KB JSON × 실제 1억 행**으로 재검증했습니다. 절대 처리량 숫자는 개발 환경 종속이라 신뢰하지 않고, **메커니즘과 상대적 개선폭(before/after)만 근거로 인용**합니다.
 
@@ -139,17 +139,15 @@ sequenceDiagram
 
 ---
 
-## 🛡 보강 축 — 정직하게 인지하고 있는 갭
+## 보강 축: 인지하고 있는 갭
 
 컴포넌트별 실패 모드를 먼저 카탈로그화(트리거 → blast radius → 감지 → 현재 완화 → 갭)한 뒤, 그 갭을 보강 우선순위로 정리했습니다.
 
 | 축 | 현재 상태 |
 | :--- | :--- |
-| **신뢰성(전달 의미론)** | 🔶 멱등 수신은 있지만(재전송 안전), 세션 종료 통보(afterCommit gRPC)는 fire-and-forget(`onError` 로그만) — **at-most-once**라 유실 가능. Outbox 패턴으로 at-least-once 송신 + 기존 멱등 수신 = exactly-once 전환이 다음 과제 |
-| **회복탄력성** | 🔶 gRPC 호출에 deadline·서킷브레이커 없음 — AI 서버가 느려지거나 죽으면 그대로 영향받을 수 있음 |
-| **관측성** | 🔴 구조화 로깅·correlation id 전파·헬스체크 메트릭이 비어있음 |
-| **캐싱** | 🔶 설계만 완료(카탈로그성 데이터는 cache-aside + Caffeine, 다중 인스턴스 시 Redis로 전환) — 아직 미구현 |
-| **보안** | 🟢 JWT + Refresh Token + blacklist + BCrypt + role 기반 인가 |
-
-> "다 막았다"가 아니라 **"뭐가 어떻게 깨지는지 알고, 뭘 아직 안 막았는지 정직하게 아는 것"**이 이 표의 목적입니다.
+| **신뢰성(전달 의미론)** | 멱등 수신은 있지만(재전송 안전), 세션 종료 통보(afterCommit gRPC)는 fire-and-forget(`onError` 로그만)이라 at-most-once로 유실 가능. Outbox 패턴으로 at-least-once 송신 + 기존 멱등 수신 = exactly-once 전환이 다음 과제 |
+| **회복탄력성** | gRPC 호출에 deadline·서킷브레이커 없음. AI 서버가 느려지거나 죽으면 그대로 영향받을 수 있음 |
+| **관측성** | 구조화 로깅·correlation id 전파·헬스체크 메트릭이 비어있음 |
+| **캐싱** | 설계만 완료(카탈로그성 데이터는 cache-aside + Caffeine, 다중 인스턴스 시 Redis로 전환), 아직 미구현 |
+| **보안** | JWT + Refresh Token + blacklist + BCrypt + role 기반 인가 |
 
